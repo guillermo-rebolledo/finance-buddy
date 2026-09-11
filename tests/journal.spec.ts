@@ -74,7 +74,7 @@ test("income and expenses persist in a coherent exact weekly report", async ({
     { categoryId: null, category: "Uncategorized", amount: "1500.00" },
   ]);
   await page.reload();
-  await expect(page.getByText("MXN 8,500.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("+MXN 8,500.00", { exact: true })).toBeVisible();
 });
 
 test("phone and desktop save optional fields, preserve invalid input, and recover a lost response once", async ({
@@ -386,7 +386,9 @@ test("refunds reduce expenses and totals without counting as income", async ({
     totals.getByText("MXN 10,000.00", { exact: true }),
   ).toBeVisible();
   await expect(totals.getByText("MXN 800.00", { exact: true })).toBeVisible();
-  await expect(totals.getByText("MXN 9,200.00", { exact: true })).toBeVisible();
+  await expect(
+    totals.getByText("+MXN 9,200.00", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText("Refund · Groceries", { exact: true }),
   ).toBeVisible();
@@ -470,7 +472,8 @@ test("a standalone refund reduces only its own receipt period and keeps expense 
   await page.reload();
   const totals = page.getByRole("region", { name: "Weekly totals" });
   await expect(totals.getByText("-MXN 250.00", { exact: true })).toBeVisible();
-  await expect(totals.getByText("MXN 250.00", { exact: true })).toBeVisible();
+  await expect(totals.getByText("+MXN 250.00", { exact: true })).toBeVisible();
+  await expect(totals.getByText("MXN 0.00", { exact: true })).toBeVisible();
   // Income categories and archived expense categories stay unavailable to refunds.
   const income = await post(page, {
     kind: "refund",

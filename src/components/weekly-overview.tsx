@@ -1,13 +1,14 @@
 "use client";
 import { useRef, useState } from "react";
 import {
-  categoryKind,
-  entryKindLabels,
+  entryKindDetail,
+  entryKinds,
+  entryKindDetails,
   money,
   signedAmount,
+  signedMoney,
   validateEntry,
   type EntryInput,
-  type EntryKind,
   type WeeklyReport,
 } from "@/lib/financial";
 import { Button } from "@/components/ui/button";
@@ -224,15 +225,11 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                       <NativeSelectOption value="">
                         Choose a type
                       </NativeSelectOption>
-                      <NativeSelectOption value="income">
-                        Income
-                      </NativeSelectOption>
-                      <NativeSelectOption value="expense">
-                        Expense
-                      </NativeSelectOption>
-                      <NativeSelectOption value="refund">
-                        Refund
-                      </NativeSelectOption>
+                      {entryKinds.map((available) => (
+                        <NativeSelectOption key={available} value={available}>
+                          {entryKindDetails[available].label}
+                        </NativeSelectOption>
+                      ))}
                     </NativeSelect>
                     {kind === "refund" && (
                       <p className="text-sm text-muted-foreground">
@@ -283,7 +280,8 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                       {report.categories
                         .filter(
                           (category) =>
-                            kind && category.kind === categoryKind(kind),
+                            category.kind ===
+                            entryKindDetail(kind)?.categoryKind,
                         )
                         .map((category) => (
                           <NativeSelectOption
@@ -296,8 +294,9 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                     </NativeSelect>
                     {kind === "refund" && (
                       <p className="text-sm text-muted-foreground">
-                        Refunds use your active expense categories. Restore an
-                        archived category in category management to choose it.
+                        Refunds use your active expense categories. An archived
+                        category stays archived; leave the refund uncategorized
+                        instead.
                       </p>
                     )}
                   </Field>
@@ -351,16 +350,16 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
             className="grid gap-4 md:grid-cols-3"
           >
             {[
-              ["Total income", report.income],
-              ["Total expenses", report.expenses],
-              ["Net change", report.netChange],
+              ["Total income", money(report.income)],
+              ["Total expenses", money(report.expenses)],
+              ["Net change", signedMoney(report.netChange)],
             ].map(([label, amount]) => (
               <Card key={label}>
                 <CardHeader>
                   <CardDescription>{label}</CardDescription>
                   <CardTitle>
                     <span className="break-all text-2xl tabular-nums">
-                      {money(amount)}
+                      {amount}
                     </span>
                   </CardTitle>
                   {label === "Net change" && (
@@ -420,7 +419,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                     >
                       <div className="flex flex-wrap justify-between gap-2">
                         <span className="font-medium">
-                          {entryKindLabels[entry.kind as EntryKind]} ·{" "}
+                          {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
                           {entry.category}
                         </span>
                         <span className="font-medium tabular-nums">

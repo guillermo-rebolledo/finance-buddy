@@ -1,15 +1,41 @@
 export type CategoryKind = "income" | "expense";
 export type EntryKind = "income" | "expense" | "refund";
 export type Category = { id: string; kind: CategoryKind; name: string };
-export const entryKinds: EntryKind[] = ["income", "expense", "refund"];
-export const entryKindLabels: Record<EntryKind, string> = {
-  income: "Income",
-  expense: "Expense",
-  refund: "Refund",
+// One descriptor per movement type: its label, the category list it draws from,
+// and how it moves the period total it belongs to. A refund reduces expenses,
+// so it reads from the owner's expense categories and carries a negative sign.
+export const entryKindDetails: Record<
+  EntryKind,
+  {
+    label: string;
+    categoryKind: CategoryKind;
+    total: "income" | "expenses";
+    sign: bigint;
+  }
+> = {
+  income: {
+    label: "Income",
+    categoryKind: "income",
+    total: "income",
+    sign: 1n,
+  },
+  expense: {
+    label: "Expense",
+    categoryKind: "expense",
+    total: "expenses",
+    sign: 1n,
+  },
+  refund: {
+    label: "Refund",
+    categoryKind: "expense",
+    total: "expenses",
+    sign: -1n,
+  },
 };
-// Refunds reduce expenses, so they are classified with the owner's expense categories.
-export function categoryKind(kind: string): CategoryKind {
-  return kind === "income" ? "income" : "expense";
+export const entryKinds = Object.keys(entryKindDetails) as EntryKind[];
+// Unvalidated input and the empty form selection have no descriptor.
+export function entryKindDetail(kind: string) {
+  return entryKindDetails[kind as EntryKind];
 }
 export type EntryInput = {
   id: string;
@@ -63,7 +89,15 @@ export function money(amount: string) {
 }
 // Refunds are entered as positive amounts and presented as reductions.
 export function signedAmount(entry: { kind: string; amount: string }) {
-  return entry.kind === "refund" ? `-${entry.amount}` : entry.amount;
+  return entryKindDetail(entry.kind)?.sign === -1n
+    ? `-${entry.amount}`
+    : entry.amount;
+}
+// Net change reads as a direction, so a period that gained money shows its sign.
+export function signedMoney(amount: string) {
+  return amount.startsWith("-") || centavos(amount) === 0n
+    ? money(amount)
+    : `+${money(amount)}`;
 }
 export const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,7 +114,7 @@ export function validateEntry(
       field: "id",
       message: "Invalid entry identifier. Reload and try again.",
     };
-  if (!entryKinds.includes(entry.kind as EntryKind))
+  if (typeof entry.kind !== "string" || !entryKindDetail(entry.kind))
     return { field: "kind", message: "Choose income, expense, or refund." };
   if (
     typeof entry.amount !== "string" ||

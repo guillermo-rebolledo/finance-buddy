@@ -3,11 +3,12 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { getConfig } from "./config";
 import {
-  categoryKind,
   centavos,
   decimal,
+  entryKindDetails,
   mexicoToday,
   weekContaining,
+  type EntryKind,
   type Category,
   type EntryError,
   type EntryInput,
@@ -90,10 +91,11 @@ export async function weeklyReport(owner: string): Promise<WeeklyReport> {
       row: EntryInput & { centavos: string; category: string; currency: "MXN" },
     ) => {
       const value = BigInt(row.centavos);
-      if (row.kind === "income") income += value;
+      // A refund reduces expenses and its category group on its own movement date.
+      const kind = entryKindDetails[row.kind as EntryKind];
+      const effect = value * kind.sign;
+      if (kind.total === "income") income += effect;
       else {
-        // A refund reduces expenses and its category group on its own movement date.
-        const effect = row.kind === "refund" ? -value : value;
         expenses += effect;
         const group = groups.get(row.categoryId) ?? {
           categoryId: row.categoryId,
@@ -169,7 +171,11 @@ export async function saveEntry(
     if (entry.categoryId) {
       const category = await client.query(
         "SELECT 1 FROM category WHERE owner_id=$1 AND id=$2 AND kind=$3 AND active FOR SHARE",
-        [owner, entry.categoryId, categoryKind(entry.kind)],
+        [
+          owner,
+          entry.categoryId,
+          entryKindDetails[entry.kind as EntryKind].categoryKind,
+        ],
       );
       if (!category.rowCount) {
         await client.query("ROLLBACK");
