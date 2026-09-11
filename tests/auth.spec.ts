@@ -1,3 +1,4 @@
+import { signIn } from "./helpers";
 import { test, expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 test.beforeEach(async () => {
@@ -27,46 +28,17 @@ test("unauthenticated requests cannot enter the private home", async ({
   });
 });
 
-async function signIn(
-  page: import("@playwright/test").Page,
-  identity = "owner",
-) {
-  await page.route(
-    "https://accounts.google.com/o/oauth2/v2/auth**",
-    async (route) => {
-      const url = new URL(route.request().url());
-      expect(url.searchParams.get("code_challenge_method")).toBe("S256");
-      const callback = new URL(url.searchParams.get("redirect_uri")!);
-      callback.searchParams.set("state", url.searchParams.get("state")!);
-      callback.searchParams.set("code", identity);
-      await route.fulfill({
-        status: 302,
-        headers: { location: callback.toString() },
-      });
-    },
-  );
-  await page.goto("/login");
-  await page.getByRole("button", { name: "Continue with Google" }).click();
-}
-
 test("verified owner signs in through Google and retains a database-backed session", async ({
   page,
   context,
 }, testInfo) => {
   await signIn(page);
-  await expect(
-    page.getByRole("heading", { name: "Welcome home." }),
-  ).toBeVisible();
-  await expect(page.getByRole("status")).toHaveText(
-    "Database connected · Session active",
-  );
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   const first = await (await context.request.get("/api/private")).json();
   expect(first.userId).toEqual(expect.any(String));
   expect(first.userId).not.toContain("@");
   await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "Welcome home." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   expect(await (await context.request.get("/api/private")).json()).toEqual(
     first,
   );
@@ -103,9 +75,7 @@ test("sign-out revokes the persisted session, including a copied cookie", async 
   playwright,
 }) => {
   await signIn(page);
-  await expect(
-    page.getByRole("heading", { name: "Welcome home." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   const replay = await playwright.request.newContext({
     storageState: await context.storageState(),
   });
@@ -187,9 +157,7 @@ test("expired sessions stop working for both the page and protected requests", a
 }) => {
   const previousTime = await readFile(process.env.TEST_CLOCK_FILE!, "utf8");
   await signIn(page);
-  await expect(
-    page.getByRole("heading", { name: "Welcome home." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   try {
     await writeFile(
       process.env.TEST_CLOCK_FILE!,

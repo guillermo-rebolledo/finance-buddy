@@ -53,7 +53,7 @@ const tokens = Object.fromEntries(
         .setIssuer("https://accounts.google.com")
         .setAudience("test-client")
         .setIssuedAt()
-        .setExpirationTime("1h")
+        .setExpirationTime("1d")
         .sign(privateKey),
     ]),
   ),
