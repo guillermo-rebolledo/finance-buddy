@@ -1,0 +1,76 @@
+import "server-only";
+import { betterAuth } from "better-auth";
+import { Pool } from "pg";
+import { getConfig } from "./config";
+
+function isVerifiedOwner(
+  user: { email?: string; emailVerified?: boolean },
+  ownerEmail: string,
+) {
+  return (
+    user.emailVerified === true && user.email?.toLowerCase() === ownerEmail
+  );
+}
+
+function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
+  return betterAuth({
+    baseURL: config.origin,
+    secret: config.secret,
+    database: new Pool({
+      connectionString: config.databaseURL,
+      max: 5,
+      connectionTimeoutMillis: 5000,
+      query_timeout: 5000,
+    }),
+    trustedOrigins: [config.origin],
+    emailAndPassword: { enabled: false },
+    socialProviders: {
+      google: {
+        clientId: config.googleClientId,
+        clientSecret: config.googleClientSecret,
+        prompt: "select_account",
+        requireEmailVerification: true,
+      },
+    },
+    user: {
+      validateUserInfo: ({ user, source }) => {
+        if (
+          source.method !== "oauth" ||
+          source.oauth?.providerId !== "google" ||
+          !isVerifiedOwner(user, config.ownerEmail)
+        ) {
+          return {
+            error: "access_denied",
+            errorDescription: "This account cannot access this workspace.",
+          };
+        }
+      },
+    },
+    account: { accountLinking: { enabled: false } },
+    session: { expiresIn: 60 * 60 * 24 * 7, cookieCache: { enabled: false } },
+    onAPIError: { errorURL: `${config.origin}/login`, throw: false },
+    logger: { disabled: true },
+  });
+}
+let instance: ReturnType<typeof createAuth> | undefined;
+export function getAuth() {
+  const config = getConfig();
+  if (!config) return null;
+  return (instance ??= createAuth(config));
+}
+
+export async function getAccess(headers: Headers) {
+  const config = getConfig();
+  const auth = getAuth();
+  if (!config || !auth) return { status: "unavailable" } as const;
+  try {
+    // Cookie caching is disabled: each request proves a live database-backed session.
+    const session = await auth.api.getSession({ headers });
+    if (!session) return { status: "unauthenticated" } as const;
+    if (!isVerifiedOwner(session.user, config.ownerEmail))
+      return { status: "forbidden" } as const;
+    return { status: "authorized", userId: session.user.id } as const;
+  } catch {
+    return { status: "unavailable" } as const;
+  }
+}
