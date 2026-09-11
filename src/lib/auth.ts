@@ -3,6 +3,15 @@ import { betterAuth } from "better-auth";
 import { Pool } from "pg";
 import { getConfig } from "./config";
 
+function isVerifiedOwner(
+  user: { email?: string; emailVerified?: boolean },
+  ownerEmail: string,
+) {
+  return (
+    user.emailVerified === true && user.email?.toLowerCase() === ownerEmail
+  );
+}
+
 function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
   return betterAuth({
     baseURL: config.origin,
@@ -28,8 +37,7 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
         if (
           source.method !== "oauth" ||
           source.oauth?.providerId !== "google" ||
-          user.emailVerified !== true ||
-          user.email?.toLowerCase() !== config.ownerEmail
+          !isVerifiedOwner(user, config.ownerEmail)
         ) {
           return {
             error: "access_denied",
@@ -59,10 +67,7 @@ export async function getAccess(headers: Headers) {
     // Cookie caching is disabled: each request proves a live database-backed session.
     const session = await auth.api.getSession({ headers });
     if (!session) return { status: "unauthenticated" } as const;
-    if (
-      !session.user.emailVerified ||
-      session.user.email.toLowerCase() !== config.ownerEmail
-    )
+    if (!isVerifiedOwner(session.user, config.ownerEmail))
       return { status: "forbidden" } as const;
     return { status: "authorized", userId: session.user.id } as const;
   } catch {
