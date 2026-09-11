@@ -1,4 +1,16 @@
-export type Category = { id: string; kind: "income" | "expense"; name: string };
+export type CategoryKind = "income" | "expense";
+export type EntryKind = "income" | "expense" | "refund";
+export type Category = { id: string; kind: CategoryKind; name: string };
+export const entryKinds: EntryKind[] = ["income", "expense", "refund"];
+export const entryKindLabels: Record<EntryKind, string> = {
+  income: "Income",
+  expense: "Expense",
+  refund: "Refund",
+};
+// Refunds reduce expenses, so they are classified with the owner's expense categories.
+export function categoryKind(kind: string): CategoryKind {
+  return kind === "income" ? "income" : "expense";
+}
 export type EntryInput = {
   id: string;
   kind: string;
@@ -45,8 +57,13 @@ export function decimal(value: bigint) {
   return `${sign}${absolute / 100n}.${String(absolute % 100n).padStart(2, "0")}`;
 }
 export function money(amount: string) {
-  const [whole, fraction] = amount.split(".");
-  return `MXN ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction}`;
+  const negative = amount.startsWith("-");
+  const [whole, fraction] = (negative ? amount.slice(1) : amount).split(".");
+  return `${negative ? "-" : ""}MXN ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction}`;
+}
+// Refunds are entered as positive amounts and presented as reductions.
+export function signedAmount(entry: { kind: string; amount: string }) {
+  return entry.kind === "refund" ? `-${entry.amount}` : entry.amount;
 }
 export const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,8 +80,8 @@ export function validateEntry(
       field: "id",
       message: "Invalid entry identifier. Reload and try again.",
     };
-  if (!["income", "expense"].includes(entry.kind))
-    return { field: "kind", message: "Choose income or expense." };
+  if (!entryKinds.includes(entry.kind as EntryKind))
+    return { field: "kind", message: "Choose income, expense, or refund." };
   if (
     typeof entry.amount !== "string" ||
     !/^\d{1,12}(\.\d{1,2})?$/.test(entry.amount) ||
