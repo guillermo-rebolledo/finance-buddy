@@ -41,18 +41,9 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
   const [uncertain, setUncertain] = useState(false);
   const pending = useRef<EntryInput | null>(null);
   const inFlight = useRef(false);
-  const invalidField = error.startsWith("Choose income")
-    ? "kind"
-    : error.startsWith("Enter an amount")
-      ? "amount"
-      : error.startsWith("Choose a valid movement")
-        ? "date"
-        : error.startsWith("Choose an active category") ||
-            error.startsWith("Choose an available category")
-          ? "categoryId"
-          : error.startsWith("Keep the note")
-            ? "note"
-            : null;
+  const [invalidField, setInvalidField] = useState<keyof EntryInput | null>(
+    null,
+  );
   const fieldProps = (name: string) => ({
     "aria-invalid": invalidField === name,
     "aria-describedby": invalidField === name ? "entry-error" : undefined,
@@ -63,8 +54,10 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
     try {
       const response = await fetch("/api/journal", { cache: "no-store" });
       if (!response.ok) throw new Error();
-      setReport(await response.json());
+      const latest: WeeklyReport = await response.json();
+      setReport(latest);
       setLoadError(false);
+      return latest;
     } catch {
       setLoadError(true);
     } finally {
@@ -83,9 +76,24 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
       categoryId: String(data.get("categoryId") ?? "") || null,
       note: String(data.get("note") ?? ""),
     };
-    const invalid = validateEntry(entry, report!.today);
+    inFlight.current = true;
+    setSaving(true);
+    const current = await refresh();
+    if (!current) {
+      setInvalidField(null);
+      setError(
+        "Could not check the current date. Your input is preserved; retry when the overview is available.",
+      );
+      inFlight.current = false;
+      setSaving(false);
+      return;
+    }
+    const invalid = validateEntry(entry, current.today);
     if (invalid) {
-      setError(invalid);
+      inFlight.current = false;
+      setSaving(false);
+      setError(invalid.message);
+      setInvalidField(invalid.field);
       requestAnimationFrame(() =>
         document.getElementById("entry-error")?.focus(),
       );
@@ -95,6 +103,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
     inFlight.current = true;
     setSaving(true);
     setError("");
+    setInvalidField(null);
     setSuccess("");
     try {
       const response = await fetch("/api/journal", {
@@ -108,6 +117,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
           pending.current = null;
           setUncertain(false);
         } else setUncertain(true);
+        setInvalidField(result.field ?? null);
         setError(
           result.error ||
             "Save could not be confirmed. Retry this entry safely.",
@@ -116,7 +126,6 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
       }
       pending.current = null;
       setUncertain(false);
-      const current = report;
       setSuccess(
         current && (entry.date < current.start || entry.date > current.end)
           ? `Entry saved for ${entry.date}, outside this week. It is stored for future historical browsing.`
@@ -153,7 +162,8 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
         <Button
           size="lg"
           disabled={!report || loading}
-          onClick={() => {
+          onClick={async () => {
+            if (!open && !(await refresh())) return;
             setOpen(true);
             setSuccess("");
             requestAnimationFrame(() =>
@@ -237,7 +247,6 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                       {...fieldProps("date")}
                       type="date"
                       defaultValue={report.today}
-                      max={report.today}
                       required
                     />
                     <p className="text-sm text-muted-foreground">
@@ -303,6 +312,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                   onClick={() => {
                     setOpen(false);
                     setError("");
+                    setInvalidField(null);
                   }}
                 >
                   Cancel

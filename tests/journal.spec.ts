@@ -100,16 +100,29 @@ test("phone and desktop save optional fields, preserve invalid input, and recove
   await expect(page.getByLabel("Note (optional)")).toHaveValue(
     "Coffee <script>literal</script>",
   );
-  await page.getByLabel("Amount (MXN)").fill("0.10");
-  await page.route(
-    "**/api/journal",
-    async (route) => {
-      if (route.request().method() !== "POST") return route.continue();
-      await route.fetch(); // The database commits; only the response is lost.
-      await route.abort();
-    },
-    { times: 1 },
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Add entry", exact: true }).click();
+  await expect(page.getByLabel("Amount (MXN)")).toHaveAttribute(
+    "aria-invalid",
+    "false",
   );
+  await page.getByLabel("Type", { exact: true }).selectOption("expense");
+  await page
+    .getByLabel("Note (optional)")
+    .fill("Coffee <script>literal</script>");
+  await page.getByLabel("Amount (MXN)").fill("0.10");
+  await page.screenshot({
+    path: testInfo.outputPath("entry-form.png"),
+    fullPage: true,
+  });
+  let lostResponse = false;
+  await page.route("**/api/journal", async (route) => {
+    if (route.request().method() !== "POST" || lostResponse)
+      return route.continue();
+    lostResponse = true;
+    await route.fetch(); // The database commits; only the response is lost.
+    await route.abort();
+  });
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Retry same entry" }),
@@ -383,4 +396,42 @@ test("all period rows reconcile exactly across calendar boundaries", async ({
   expect(
     (await (await page.request.get("/api/journal")).json()).entries,
   ).toEqual(report.entries);
+});
+
+test("an open workspace and form follow Mexico City midnight", async ({
+  page,
+}) => {
+  await overview(page);
+  await writeFile(
+    process.env.TEST_CLOCK_FILE!,
+    String(Date.parse("2026-09-07T06:01:00Z") - Date.now()),
+  );
+  await page.getByRole("button", { name: "Add entry", exact: true }).click();
+  await expect(page.getByLabel("Movement date", { exact: true })).toHaveValue(
+    "2026-09-07",
+  );
+  await expect(
+    page.getByText("2026-09-07 – 2026-09-13 · Monday–Sunday", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Type", { exact: true }).selectOption("income");
+  await page
+    .getByLabel("Category (optional)")
+    .selectOption({ label: "Salary" });
+  await page.getByLabel("Amount (MXN)").fill("100");
+  // The form itself remains open over another midnight.
+  await writeFile(
+    process.env.TEST_CLOCK_FILE!,
+    String(Date.parse("2026-09-08T06:01:00Z") - Date.now()),
+  );
+  await page.getByLabel("Movement date", { exact: true }).fill("2026-09-08");
+  expect(
+    await page
+      .getByLabel("Movement date", { exact: true })
+      .evaluate((input: HTMLInputElement) => input.validity.rangeOverflow),
+  ).toBe(false);
+  await page.getByRole("button", { name: "Save entry", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Entry saved.");
+  expect((await (await page.request.get("/api/journal")).json()).income).toBe(
+    "100.00",
+  );
 });

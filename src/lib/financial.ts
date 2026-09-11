@@ -50,20 +50,31 @@ export function money(amount: string) {
 }
 export const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function validateEntry(input: unknown, today: string): string | null {
+export type EntryError = { field: keyof EntryInput | null; message: string };
+export function validateEntry(
+  input: unknown,
+  today: string,
+): EntryError | null {
   if (!input || typeof input !== "object")
-    return "Enter a valid financial movement.";
+    return { field: null, message: "Enter a valid financial movement." };
   const entry = input as EntryInput;
   if (typeof entry.id !== "string" || !uuidPattern.test(entry.id))
-    return "Invalid entry identifier. Reload and try again.";
+    return {
+      field: "id",
+      message: "Invalid entry identifier. Reload and try again.",
+    };
   if (!["income", "expense"].includes(entry.kind))
-    return "Choose income or expense.";
+    return { field: "kind", message: "Choose income or expense." };
   if (
     typeof entry.amount !== "string" ||
     !/^\d{1,12}(\.\d{1,2})?$/.test(entry.amount) ||
     centavos(entry.amount) <= 0n
   )
-    return "Enter an amount greater than zero with up to two decimal places (maximum 999,999,999,999.99).";
+    return {
+      field: "amount",
+      message:
+        "Enter an amount greater than zero with up to two decimal places (maximum 999,999,999,999.99).",
+    };
   if (
     typeof entry.date !== "string" ||
     !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) ||
@@ -73,14 +84,17 @@ export function validateEntry(input: unknown, today: string): string | null {
       entry.date ||
     entry.date > today
   )
-    return "Choose a valid movement date today or earlier in Mexico City.";
+    return {
+      field: "date",
+      message: "Choose a valid movement date today or earlier in Mexico City.",
+    };
   if (
     entry.categoryId !== null &&
     (typeof entry.categoryId !== "string" ||
       !uuidPattern.test(entry.categoryId))
   )
-    return "Choose an available category.";
+    return { field: "categoryId", message: "Choose an available category." };
   if (typeof entry.note !== "string" || entry.note.length > 2000)
-    return "Keep the note within 2,000 characters.";
+    return { field: "note", message: "Keep the note within 2,000 characters." };
   return null;
 }

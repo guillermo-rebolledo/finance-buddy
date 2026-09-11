@@ -33,10 +33,17 @@ async function handle(request: Request, write: boolean) {
       return Response.json(await weeklyReport(access.userId), { headers });
     const input = await request.json().catch(() => null);
     const error = validateEntry(input, mexicoToday());
-    if (error) return Response.json({ error }, { status: 400, headers });
+    if (error)
+      return Response.json(
+        { error: error.message, field: error.field },
+        { status: 400, headers },
+      );
     const categoryError = await saveEntry(access.userId, input);
     if (categoryError)
-      return Response.json({ error: categoryError }, { status: 400, headers });
+      return Response.json(
+        { error: categoryError.message, field: categoryError.field },
+        { status: 400, headers },
+      );
     return Response.json({ saved: true }, { headers });
   } catch {
     return Response.json(

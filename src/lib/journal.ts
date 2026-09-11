@@ -8,6 +8,7 @@ import {
   mexicoToday,
   weekContaining,
   type Category,
+  type EntryError,
   type EntryInput,
   type WeeklyReport,
 } from "./financial";
@@ -126,7 +127,10 @@ export async function weeklyReport(owner: string): Promise<WeeklyReport> {
     })),
   };
 }
-export async function saveEntry(owner: string, entry: EntryInput) {
+export async function saveEntry(
+  owner: string,
+  entry: EntryInput,
+): Promise<EntryError | undefined> {
   const client = await database().connect();
   try {
     await client.query("BEGIN");
@@ -153,7 +157,11 @@ export async function saveEntry(owner: string, entry: EntryInput) {
       await client.query("COMMIT");
       return existing.rows[0].matches
         ? undefined
-        : "This entry identifier was already saved with different values. Refresh to review it.";
+        : {
+            field: "id",
+            message:
+              "This entry identifier was already saved with different values. Refresh to review it.",
+          };
     }
     if (entry.categoryId) {
       const category = await client.query(
@@ -162,7 +170,10 @@ export async function saveEntry(owner: string, entry: EntryInput) {
       );
       if (!category.rowCount) {
         await client.query("ROLLBACK");
-        return "Choose an active category for this entry type.";
+        return {
+          field: "categoryId",
+          message: "Choose an active category for this entry type.",
+        };
       }
     }
     await client.query(
