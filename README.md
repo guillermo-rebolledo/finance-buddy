@@ -36,11 +36,11 @@ Missing/invalid configuration or database failures deny access and expose only g
 Apply migrations explicitly against the intended database **before** starting the configured app:
 
 ```sh
-node --env-file=.env.local --import tsx scripts/migrate.ts
+pnpm db:migrate
 pnpm dev
 ```
 
-Alternatively, with `DATABASE_URL` already in the process environment, use `pnpm db:migrate`. The checked-in SQL initializes Better Auth's schema and the financial journal (migration `0002_journal.sql`). The runner applies pending files in one transaction, takes an advisory lock, and records applied names. Repeated runs skip applied migrations. Do not edit an applied migration; add a numbered SQL file. Builds, previews, and application startup never apply migrations.
+`pnpm db:migrate` loads `.env.local` if present. An existing process-level `DATABASE_URL` takes precedence, including the disposable database supplied by the test harness. The checked-in SQL initializes Better Auth's schema and the financial journal (migration `0002_journal.sql`). The runner applies pending files in one transaction, takes an advisory lock, and records applied names. Repeated runs skip applied migrations. Do not edit an applied migration; add a numbered SQL file. Builds, previews, and application startup never apply migrations.
 
 For a production-like local run:
 
