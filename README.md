@@ -6,7 +6,7 @@ Three signed-in pages share one period selection. The home page is the **entry r
 
 ## Tooling
 
-Use Node **24.20.0** (`.node-version`) and pnpm **10.29.2** (`packageManager`). Runtime dependencies are exact-pinned and `pnpm-lock.yaml` is committed. Next.js 16.3.5, React 19.3.0, Better Auth 1.7.4, Tailwind CSS 4.3.3, and shadcn/ui Radix components are used. The vendored UI components were installed with shadcn CLI 4.21.0. Light, dark, and system modes use next-themes 0.4.6, and component animations use tw-animate-css 1.4.0. TypeScript 6.0.2 and ESLint 9.39.4 match the current Next ESLint plugin peer ranges.
+Use Node **24.20.0** (`.node-version`) and pnpm **10.29.2** (`packageManager`). Runtime dependencies are exact-pinned and `pnpm-lock.yaml` is committed. Next.js 16.3.5, React 19.3.0, Better Auth 1.7.4, Tailwind CSS 4.3.3, and shadcn/ui Radix components are used. The vendored UI components were installed with shadcn CLI 4.21.0. Signed-in pages share one shadcn `Sidebar`: on desktop it collapses to icons (the state is remembered in a cookie, and Ctrl/⌘+B toggles it), and on a phone it opens as a sheet from the menu button in the top bar. Light, dark, and system modes use next-themes 0.4.6, and component animations use tw-animate-css 1.4.0. TypeScript 6.0.2 and ESLint 9.39.4 match the current Next ESLint plugin peer ranges.
 
 ```sh
 corepack enable
@@ -133,7 +133,7 @@ Snapshots are copies, not synchronized views: correcting or deleting movements, 
 
 ## Category management
 
-The `/categories` page manages the separate income and expense lists, and is reached from the header on every signed-in page. `GET /api/categories` returns both lists with each category's archived state. `POST /api/categories` accepts one change: `{ action: "create", kind, name }`, `{ action: "rename", id, name }`, or `{ action: "archive" | "restore", id }`. There is no merging, no conversion between lists, and no permanent deletion.
+The `/categories` page manages the separate income and expense lists, and is reached from the navigation drawer on every signed-in page. `GET /api/categories` returns both lists with each category's archived state. `POST /api/categories` accepts one change: `{ action: "create", kind, name }`, `{ action: "rename", id, name }`, or `{ action: "archive" | "restore", id }`. There is no merging, no conversion between lists, and no permanent deletion.
 
 A name is trimmed, holds 1 to 40 characters, carries no control characters, and is unique case-insensitively within one list, counting archived categories, so a taken name is restored or renamed rather than recreated (see `docs/adr/0005-bounded-category-names.md`). A database constraint and unique index enforce the same rules as request validation.
 
@@ -147,6 +147,6 @@ A correction that is refused keeps the form values on screen, marks the field at
 
 ## Appearance
 
-The header's theme menu switches between light, dark, and the device's system setting. **Settings → Appearance** also chooses a color scheme for each mode separately (Sage, Neutral, Ocean, Rose, or Amber). Appearance is a preference of the browser rather than the journal: it is stored in `localStorage` and applied by an inline script before first paint.
+The theme menu at the foot of the navigation drawer switches between light, dark, and the device's system setting. **Settings → Appearance** also chooses a color scheme for each mode separately (Sage, Neutral, Ocean, Rose, or Amber). Appearance is a preference of the browser rather than the journal: it is stored in `localStorage` and applied by an inline script before first paint.
 
 Every color is a CSS variable in `src/app/globals.css`, exposed to Tailwind through `@theme inline`. To add a scheme, add a `[data-light-scheme="<id>"]:not(.dark)` block and a `.dark[data-dark-scheme="<id>"]` block overriding the scheme variables, then list the id in `src/lib/appearance.ts`. Chart hues belong to the mode rather than the scheme, so a series keeps its identity whichever scheme is chosen.

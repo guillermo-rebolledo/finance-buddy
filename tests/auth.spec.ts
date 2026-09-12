@@ -1,4 +1,4 @@
-import { signIn } from "./helpers";
+import { signIn, openNavigation } from "./helpers";
 import { test, expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 test.beforeEach(async () => {
@@ -79,7 +79,9 @@ test("sign-out revokes the persisted session, including a copied cookie", async 
   const replay = await playwright.request.newContext({
     storageState: await context.storageState(),
   });
-  await page.getByRole("button", { name: "Sign out" }).click();
+  const signOut = page.getByRole("button", { name: "Sign out" });
+  await openNavigation(page, signOut);
+  await signOut.click();
   await expect(page).toHaveURL(/\/login$/);
   expect((await context.request.get("/api/private")).status()).toBe(401);
   expect((await replay.get("http://127.0.0.1:3100/api/private")).status()).toBe(

@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAccess } from "@/lib/auth";
-import { AppHeader } from "@/components/app-header";
+import { AppShell } from "@/components/app-shell";
 import { WorkspaceUnavailable } from "@/components/workspace-unavailable";
 import { CategoryManager } from "@/components/category-manager";
 import { listCategories } from "@/lib/categories";
@@ -12,9 +12,8 @@ export default async function Categories() {
   if (access.status !== "authorized") redirect("/login");
   const lists = await listCategories(access.userId).catch(() => null);
   return (
-    <div className="mx-auto max-w-5xl px-6">
-      <AppHeader />
+    <AppShell>
       <CategoryManager initial={lists} />
-    </div>
+    </AppShell>
   );
 }

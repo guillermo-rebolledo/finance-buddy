@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAccess } from "@/lib/auth";
-import { AppHeader } from "@/components/app-header";
+import { AppShell } from "@/components/app-shell";
 import { WorkspaceUnavailable } from "@/components/workspace-unavailable";
 import { SummaryOverview } from "@/components/summary-overview";
 import { summarize } from "@/lib/journal";
@@ -17,9 +17,8 @@ export default async function Home() {
     currentWeek(mexicoToday()),
   ).catch(() => null);
   return (
-    <div className="mx-auto max-w-5xl px-6">
-      <AppHeader />
+    <AppShell>
       <SummaryOverview initial={summary} />
-    </div>
+    </AppShell>
   );
 }

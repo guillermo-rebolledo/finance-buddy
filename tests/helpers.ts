@@ -212,3 +212,24 @@ export async function optionsOf(
   await expect(page.getByRole("listbox")).toHaveCount(0);
   return names;
 }
+
+// On a phone the sections live in the navigation drawer, which the top bar
+// shows and hides; on desktop they are already on screen.
+export async function openNavigation(
+  page: import("@playwright/test").Page,
+  target: import("@playwright/test").Locator,
+) {
+  await expect(async () => {
+    if (await target.isVisible()) return;
+    await page.getByRole("button", { name: "Toggle navigation" }).click();
+    await expect(target).toBeVisible({ timeout: 1000 });
+  }).toPass();
+}
+export async function goToSection(
+  page: import("@playwright/test").Page,
+  name: string,
+) {
+  const link = page.getByRole("link", { name, exact: true });
+  await openNavigation(page, link);
+  await link.click();
+}
