@@ -1,7 +1,11 @@
 import { getAccess } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
-import { mexicoToday, validateEntry } from "@/lib/financial";
-import { saveEntry, weeklyReport } from "@/lib/journal";
+import {
+  mexicoToday,
+  parseSummaryRequest,
+  validateEntry,
+} from "@/lib/financial";
+import { saveEntry, summarize } from "@/lib/journal";
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store" };
 async function handle(request: Request, write: boolean) {
@@ -29,8 +33,20 @@ async function handle(request: Request, write: boolean) {
       { status: 403, headers },
     );
   try {
-    if (!write)
-      return Response.json(await weeklyReport(access.userId), { headers });
+    if (!write) {
+      const url = new URL(request.url);
+      const period = parseSummaryRequest(
+        url.searchParams.get("kind"),
+        url.searchParams.get("date"),
+        mexicoToday(),
+      );
+      if (!period)
+        return Response.json(
+          { error: "Choose a day, week, or month with a valid date." },
+          { status: 400, headers },
+        );
+      return Response.json(await summarize(access.userId, period), { headers });
+    }
     const input = await request.json().catch(() => null);
     const error = validateEntry(input, mexicoToday());
     if (error)
@@ -50,7 +66,7 @@ async function handle(request: Request, write: boolean) {
       {
         error: write
           ? "Save could not be confirmed. Retry this entry safely."
-          : "Could not load your weekly overview. Please retry.",
+          : "Could not load this period. Please retry.",
       },
       { status: 503, headers },
     );

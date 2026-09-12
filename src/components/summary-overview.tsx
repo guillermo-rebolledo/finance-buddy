@@ -4,12 +4,19 @@ import {
   entryKindDetail,
   entryKinds,
   entryKindDetails,
+  isCalendarDate,
   money,
+  periodKindDetails,
+  periodKinds,
+  periodLabel,
+  shiftPeriod,
   signedAmount,
   signedMoney,
+  summaryPeriod,
   validateEntry,
   type EntryInput,
-  type WeeklyReport,
+  type PeriodKind,
+  type Summary,
 } from "@/lib/financial";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,8 +41,15 @@ import {
 } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 
-export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
-  const [report, setReport] = useState(initial);
+export function SummaryOverview({ initial }: { initial: Summary | null }) {
+  const [summary, setSummary] = useState(initial);
+  // The period the controls ask for. A null date follows Mexico City's current
+  // date, so an open page keeps resolving the current period across midnight
+  // without ever trusting the browser clock.
+  const [view, setView] = useState<{ kind: PeriodKind; date: string | null }>({
+    kind: initial?.kind ?? "week",
+    date: null,
+  });
   const [loadError, setLoadError] = useState(!initial);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -54,19 +68,31 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
     "aria-describedby": invalidField === name ? "entry-error" : undefined,
   });
   const form = useRef<HTMLFormElement>(null);
-  async function refresh() {
+  const requested = useRef(0);
+  // One request per period selection: the label, totals, breakdown and rows on
+  // screen always come from a single resolved period, never a mixture.
+  async function show(next: { kind: PeriodKind; date: string | null }) {
+    setView(next);
+    const query = new URLSearchParams({ kind: next.kind });
+    if (next.date) query.set("date", next.date);
+    const sequence = ++requested.current;
     setLoading(true);
     try {
-      const response = await fetch("/api/journal", { cache: "no-store" });
+      const response = await fetch(`/api/journal?${query}`, {
+        cache: "no-store",
+      });
       if (!response.ok) throw new Error();
-      const latest: WeeklyReport = await response.json();
-      setReport(latest);
-      setLoadError(false);
+      const latest: Summary = await response.json();
+      // A slower earlier request must not replace the period now on screen.
+      if (sequence === requested.current) {
+        setSummary(latest);
+        setLoadError(false);
+      }
       return latest;
     } catch {
-      setLoadError(true);
+      if (sequence === requested.current) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (sequence === requested.current) setLoading(false);
     }
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -83,7 +109,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
     };
     inFlight.current = true;
     setSaving(true);
-    const current = await refresh();
+    const current = await show(view);
     if (!current) {
       setInvalidField(null);
       setError(
@@ -132,14 +158,14 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
       pending.current = null;
       setUncertain(false);
       setSuccess(
-        current && (entry.date < current.start || entry.date > current.end)
-          ? `Entry saved for ${entry.date}, outside this week. It is stored for future historical browsing.`
+        entry.date < current.start || entry.date > current.end
+          ? `Entry saved for ${entry.date}, outside the period you are viewing. Jump to that date to see it.`
           : "Entry saved.",
       );
       form.current?.reset();
       setKind("");
       setOpen(false);
-      await refresh();
+      await show(view);
     } catch {
       setUncertain(true);
       setError(
@@ -150,25 +176,41 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
       setSaving(false);
     }
   }
+  // The date the controls step from: the pending selection, or the period the
+  // server last resolved while the selection still follows today.
+  const anchor = view.date ?? summary?.date ?? "";
+  // Every label describes the period actually loaded, so a failed or pending
+  // selection never relabels figures that came from another period.
+  const loaded = summary && periodKindDetails[summary.kind];
+  const showsToday =
+    summary && summary.today >= summary.start && summary.today <= summary.end;
+  const requestedLabel = anchor
+    ? periodLabel(view.kind, summaryPeriod(view.kind, anchor))
+    : `the current ${periodKindDetails[view.kind].label.toLowerCase()}`;
   return (
-    <main className="flex flex-col gap-8 pb-16 pt-8 md:pt-14">
+    <main
+      aria-busy={loading}
+      className="flex flex-col gap-8 pb-16 pt-8 md:pt-14"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-            This week
+            {summary && loaded
+              ? showsToday
+                ? loaded.current
+                : periodLabel(summary.kind, summary)
+              : "Your summary"}
           </h1>
           <p className="text-muted-foreground">
-            {report
-              ? `${report.start} – ${report.end} · Monday–Sunday`
-              : "Your weekly overview"}
+            {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
           </p>
           <p className="text-sm text-muted-foreground">Mexico City · MXN</p>
         </div>
         <Button
           size="lg"
-          disabled={!report || loading}
+          disabled={!summary || loading}
           onClick={async () => {
-            if (!open && !(await refresh())) return;
+            if (!open && !(await show(view))) return;
             setOpen(true);
             setSuccess("");
             requestAnimationFrame(() =>
@@ -179,20 +221,102 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
           Add entry
         </Button>
       </div>
+      <section
+        aria-label="Period navigation"
+        className="flex flex-col gap-3 border-y py-4"
+      >
+        <div className="flex flex-wrap items-end gap-4">
+          <Field className="w-32">
+            <FieldLabel htmlFor="period">Period</FieldLabel>
+            <NativeSelect
+              id="period"
+              value={view.kind}
+              onChange={(event) =>
+                // The anchor date survives a change of period kind.
+                show({
+                  kind: event.target.value as PeriodKind,
+                  date: view.date,
+                })
+              }
+            >
+              {periodKinds.map((option) => (
+                <NativeSelectOption key={option} value={option}>
+                  {periodKindDetails[option].label}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </Field>
+          <Field className="w-48">
+            <FieldLabel htmlFor="anchor">Jump to date</FieldLabel>
+            <Input
+              id="anchor"
+              type="date"
+              value={anchor}
+              onChange={(event) => {
+                if (isCalendarDate(event.target.value))
+                  show({ kind: view.kind, date: event.target.value });
+              }}
+            />
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            {/* With no period known yet there is nothing to step from; the date
+                picker and Back to current period still reach one. */}
+            <Button
+              variant="outline"
+              disabled={!anchor}
+              onClick={() =>
+                show({
+                  kind: view.kind,
+                  date: shiftPeriod(view.kind, anchor, -1),
+                })
+              }
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!anchor}
+              onClick={() =>
+                show({
+                  kind: view.kind,
+                  date: shiftPeriod(view.kind, anchor, 1),
+                })
+              }
+            >
+              Next
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => show({ kind: view.kind, date: null })}
+            >
+              Back to current period
+            </Button>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {(loaded ?? periodKindDetails[view.kind]).note}
+          {loading && " Loading…"}
+        </p>
+      </section>
       {success && <p role="status">{success}</p>}
       {loadError && (
         <Alert variant="destructive">
-          <AlertTitle>Weekly overview unavailable</AlertTitle>
+          <AlertTitle>Period unavailable</AlertTitle>
           <AlertDescription>
-            We could not load your current figures.{" "}
-            {report && "Previously loaded figures may be out of date."}
-            <Button variant="outline" disabled={loading} onClick={refresh}>
-              {loading ? "Loading…" : "Retry overview"}
+            We could not load {requestedLabel}.{" "}
+            {summary &&
+              `The figures below still describe ${periodLabel(summary.kind, summary)}.`}
+            <Button
+              variant="outline"
+              disabled={loading}
+              onClick={() => show(view)}
+            >
+              {loading ? "Loading…" : "Retry period"}
             </Button>
           </AlertDescription>
         </Alert>
       )}
-      {open && report && (
+      {open && summary && (
         <Card>
           <CardHeader>
             <CardTitle>
@@ -256,7 +380,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                       name="date"
                       {...fieldProps("date")}
                       type="date"
-                      defaultValue={report.today}
+                      defaultValue={summary.today}
                       required
                     />
                     <p className="text-sm text-muted-foreground">
@@ -277,7 +401,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                       <NativeSelectOption value="">
                         Uncategorized
                       </NativeSelectOption>
-                      {report.categories
+                      {summary.categories
                         .filter(
                           (category) =>
                             category.kind ===
@@ -343,16 +467,16 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
           </CardContent>
         </Card>
       )}
-      {report && (
+      {summary && (
         <>
           <section
-            aria-label="Weekly totals"
+            aria-label="Period totals"
             className="grid gap-4 md:grid-cols-3"
           >
             {[
-              ["Total income", money(report.income)],
-              ["Total expenses", money(report.expenses)],
-              ["Net change", signedMoney(report.netChange)],
+              ["Total income", money(summary.income)],
+              ["Total expenses", money(summary.expenses)],
+              ["Net change", signedMoney(summary.netChange)],
             ].map(([label, amount]) => (
               <Card key={label}>
                 <CardHeader>
@@ -364,7 +488,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                   </CardTitle>
                   {label === "Net change" && (
                     <CardDescription>
-                      Recorded activity for the week
+                      Recorded activity for this period
                     </CardDescription>
                   )}
                 </CardHeader>
@@ -381,9 +505,9 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {report.breakdown.length ? (
+              {summary.breakdown.length ? (
                 <ul className="flex flex-col gap-4">
-                  {report.breakdown.map((group) => (
+                  {summary.breakdown.map((group) => (
                     <li
                       key={group.categoryId ?? "uncategorized"}
                       className="flex flex-wrap justify-between gap-2"
@@ -397,7 +521,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                 </ul>
               ) : (
                 <p className="text-muted-foreground">
-                  No expenses or refunds this week.
+                  No expenses or refunds in this period.
                 </p>
               )}
             </CardContent>
@@ -410,9 +534,9 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
               <CardDescription>Latest movement date first.</CardDescription>
             </CardHeader>
             <CardContent>
-              {report.entries.length ? (
+              {summary.entries.length ? (
                 <ul className="divide-y">
-                  {report.entries.map((entry) => (
+                  {summary.entries.map((entry) => (
                     <li
                       key={entry.id}
                       className="flex flex-col gap-2 py-4 first:pt-0"
@@ -443,10 +567,10 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
               ) : (
                 <Empty>
                   <EmptyHeader>
-                    <EmptyTitle>No entries this week</EmptyTitle>
+                    <EmptyTitle>No entries in this period</EmptyTitle>
                     <EmptyDescription>
-                      Add income, an expense, or a refund to start your weekly
-                      overview.
+                      Add income, an expense, or a refund, or browse another
+                      day, week, or month.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

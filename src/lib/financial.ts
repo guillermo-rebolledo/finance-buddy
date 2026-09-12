@@ -46,18 +46,27 @@ export type EntryInput = {
   note: string;
 };
 export type Entry = EntryInput & { category: string; currency: "MXN" };
-export type WeeklyReport = {
-  today: string;
-  start: string;
-  end: string;
-  currency: "MXN";
-  income: string;
-  expenses: string;
-  netChange: string;
-  categories: Category[];
-  entries: Entry[];
-  breakdown: { categoryId: string | null; category: string; amount: string }[];
-};
+// A summary covers one kind of summary period anchored on a selected date.
+// Every consumer resolves it here, so labels, totals, breakdown and rows always
+// describe the same days.
+export type PeriodKind = "day" | "week" | "month";
+export type Period = { start: string; end: string };
+export type SummaryRequest = { kind: PeriodKind; date: string };
+export type Summary = SummaryRequest &
+  Period & {
+    today: string;
+    currency: "MXN";
+    income: string;
+    expenses: string;
+    netChange: string;
+    categories: Category[];
+    entries: Entry[];
+    breakdown: {
+      categoryId: string | null;
+      category: string;
+      amount: string;
+    }[];
+  };
 export function mexicoToday() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Mexico_City",
@@ -66,12 +75,134 @@ export function mexicoToday() {
     day: "2-digit",
   }).format(new Date());
 }
-export function weekContaining(today: string) {
-  const date = new Date(`${today}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
-  const start = date.toISOString().slice(0, 10);
-  date.setUTCDate(date.getUTCDate() + 6);
-  return { start, end: date.toISOString().slice(0, 10) };
+// Calendar dates are handled at UTC noon so arithmetic never crosses a day.
+function atNoon(date: string) {
+  return new Date(`${date}T12:00:00Z`);
+}
+function calendarDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+export function isCalendarDate(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    value >= "0001-01-01" &&
+    Number.isFinite(Date.parse(`${value}T12:00:00Z`)) &&
+    calendarDate(atNoon(value)) === value
+  );
+}
+function addDays(date: string, count: number) {
+  const moved = atNoon(date);
+  moved.setUTCDate(moved.getUTCDate() + count);
+  return calendarDate(moved);
+}
+const dayName = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+const boundaryName = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+const monthName = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  month: "long",
+  year: "numeric",
+});
+// One descriptor per kind of summary period: how it reads, which days it
+// contains, how a step of exactly one period moves, and how it is labelled.
+// Every other place asks this map instead of testing the kind again.
+export const periodKindDetails: Record<
+  PeriodKind,
+  {
+    label: string;
+    current: string;
+    note: string;
+    containing: (date: string) => Period;
+    step: (start: string, direction: 1 | -1) => string;
+    name: (period: Period) => string;
+  }
+> = {
+  day: {
+    label: "Day",
+    current: "Today",
+    note: "A day runs from midnight to midnight in Mexico City.",
+    containing: (date) => ({ start: date, end: date }),
+    step: (start, direction) => addDays(start, direction),
+    name: (period) => dayName.format(atNoon(period.start)),
+  },
+  week: {
+    label: "Week",
+    current: "This week",
+    note: "A week runs Monday through Sunday in Mexico City.",
+    containing: (date) => {
+      const start = addDays(date, -((atNoon(date).getUTCDay() + 6) % 7));
+      // Counted from the week's own Monday, so a week may end in another month.
+      return { start, end: addDays(start, 6) };
+    },
+    step: (start, direction) => addDays(start, direction * 7),
+    name: (period) =>
+      `${boundaryName.format(atNoon(period.start))} – ${boundaryName.format(atNoon(period.end))}`,
+  },
+  month: {
+    label: "Month",
+    current: "This month",
+    note: "A month runs from its first through its last day in Mexico City.",
+    containing: (date) => {
+      const start = atNoon(date);
+      start.setUTCDate(1);
+      const end = atNoon(date);
+      // Day zero of the next month is this month's last day, whatever its length.
+      end.setUTCMonth(end.getUTCMonth() + 1, 0);
+      return { start: calendarDate(start), end: calendarDate(end) };
+    },
+    step: (start, direction) => {
+      const moved = atNoon(start);
+      moved.setUTCMonth(moved.getUTCMonth() + direction, 1);
+      return calendarDate(moved);
+    },
+    name: (period) => monthName.format(atNoon(period.start)),
+  },
+};
+export const periodKinds = Object.keys(periodKindDetails) as PeriodKind[];
+// Unvalidated input and an unknown selection have no descriptor.
+export function periodKindDetail(value: string) {
+  return periodKindDetails[value as PeriodKind];
+}
+export function summaryPeriod(kind: PeriodKind, date: string) {
+  return periodKindDetails[kind].containing(date);
+}
+// Stepping starts from the period's own first day, so month lengths, year
+// boundaries and weeks spanning months all move by exactly one period.
+export function shiftPeriod(kind: PeriodKind, date: string, direction: 1 | -1) {
+  return periodKindDetails[kind].step(
+    summaryPeriod(kind, date).start,
+    direction,
+  );
+}
+export function periodLabel(kind: PeriodKind, period: Period) {
+  return periodKindDetails[kind].name(period);
+}
+// The landing view, and the fallback for anything a request leaves out.
+export function currentWeek(today: string): SummaryRequest {
+  return { kind: "week", date: today };
+}
+// Rejects anything a summary period cannot be resolved from.
+export function parseSummaryRequest(
+  kind: string | null,
+  date: string | null,
+  today: string,
+): SummaryRequest | null {
+  const fallback = currentWeek(today);
+  const requested = kind ?? fallback.kind;
+  if (!periodKindDetail(requested)) return null;
+  if (date !== null && !isCalendarDate(date)) return null;
+  return { kind: requested as PeriodKind, date: date ?? fallback.date };
 }
 export function centavos(amount: string) {
   const [whole, fraction = ""] = amount.split(".");
@@ -126,15 +257,7 @@ export function validateEntry(
       message:
         "Enter an amount greater than zero with up to two decimal places (maximum 999,999,999,999.99).",
     };
-  if (
-    typeof entry.date !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) ||
-    entry.date < "0001-01-01" ||
-    !Number.isFinite(Date.parse(`${entry.date}T12:00:00Z`)) ||
-    new Date(`${entry.date}T12:00:00Z`).toISOString().slice(0, 10) !==
-      entry.date ||
-    entry.date > today
-  )
+  if (!isCalendarDate(entry.date) || entry.date > today)
     return {
       field: "date",
       message: "Choose a valid movement date today or earlier in Mexico City.",
