@@ -1,6 +1,7 @@
 import "server-only";
 import { getAccess } from "./auth";
 import { getConfig } from "./config";
+import { mexicoToday, parseSummaryRequest } from "./financial";
 
 export const privateHeaders = { "Cache-Control": "private, no-store" };
 export function jsonError(
@@ -35,4 +36,23 @@ export async function authorizeOwner(request: Request, write: boolean) {
   )
     return { denied: jsonError("Request not allowed.", 403) };
   return { owner: access.userId };
+}
+// The report and its export resolve the requested period the same way, and
+// refuse an unresolvable one in the same words, so a file can only ever cover a
+// period the overview itself can show.
+export function requestedPeriod(request: Request) {
+  const url = new URL(request.url);
+  const period = parseSummaryRequest(
+    url.searchParams.get("kind"),
+    url.searchParams.get("date"),
+    mexicoToday(),
+  );
+  return period
+    ? { period }
+    : {
+        denied: jsonError(
+          "Choose a day, week, or month with a valid date.",
+          400,
+        ),
+      };
 }

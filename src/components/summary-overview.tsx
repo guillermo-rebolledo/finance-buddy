@@ -54,6 +54,9 @@ import {
 } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 
+const exportFailed =
+  "The PDF could not be created, and your journal is unchanged. Retry the export.";
+
 export function SummaryOverview({ initial }: { initial: Summary | null }) {
   const [summary, setSummary] = useState(initial);
   // The period the controls ask for. A null date follows Mexico City's current
@@ -73,6 +76,9 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   const [removing, setRemoving] = useState<Entry | null>(null);
   const [deletingId, setDeletingId] = useState("");
   const [removeError, setRemoveError] = useState("");
+  // The export in flight, and why the last one could not be delivered.
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [kind, setKind] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -171,6 +177,51 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       setRemoveError("The deletion could not be confirmed. Retry it safely.");
     } finally {
       setDeletingId("");
+    }
+  }
+  // The snapshot covers the period whose figures are on screen, named by the
+  // summary the server resolved, so an export never quietly switches period.
+  // The document arrives with the reply and is never stored or linked.
+  async function exportReport() {
+    if (!summary || exporting) return;
+    setExporting(true);
+    setExportError("");
+    setSuccess("");
+    try {
+      const query = new URLSearchParams({
+        kind: summary.kind,
+        date: summary.date,
+      });
+      const response = await fetch(`/api/journal/export?${query}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        // A refused export says why it was refused, so an expired session does
+        // not read as a document that failed to render.
+        const refusal = await response.json().catch(() => null);
+        setExportError(refusal?.error || exportFailed);
+        return;
+      }
+      const name =
+        /filename="([^"]+)"/.exec(
+          response.headers.get("Content-Disposition") ?? "",
+        )?.[1] ?? "finance-buddy.pdf";
+      const address = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = address;
+      link.download = name;
+      link.click();
+      // Released only after the download has started: revoking in the same task
+      // cancels it in some browsers.
+      setTimeout(() => URL.revokeObjectURL(address), 10000);
+      setSuccess(`Downloaded ${name}.`);
+      requestAnimationFrame(() =>
+        document.getElementById("entry-status")?.focus(),
+      );
+    } catch {
+      setExportError(exportFailed);
+    } finally {
+      setExporting(false);
     }
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -304,13 +355,23 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           </p>
           <p className="text-sm text-muted-foreground">Mexico City · MXN</p>
         </div>
-        <Button
-          size="lg"
-          disabled={!summary || loading || saving}
-          onClick={() => openForm(null)}
-        >
-          Add entry
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            size="lg"
+            disabled={!summary || loading || saving}
+            onClick={() => openForm(null)}
+          >
+            Add entry
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            disabled={!summary || loading || saving || exporting}
+            onClick={exportReport}
+          >
+            {exporting ? "Preparing PDF…" : "Export PDF"}
+          </Button>
+        </div>
       </div>
       <section
         aria-label="Period navigation"
@@ -393,6 +454,21 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         <p role="status" id="entry-status" tabIndex={-1}>
           {success}
         </p>
+      )}
+      {exportError && (
+        <Alert variant="destructive">
+          <AlertTitle>Export needs attention</AlertTitle>
+          <AlertDescription>
+            {exportError}
+            <Button
+              variant="outline"
+              disabled={exporting}
+              onClick={exportReport}
+            >
+              {exporting ? "Preparing PDF…" : "Retry export"}
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
       {loadError && (
         <Alert variant="destructive">
