@@ -95,9 +95,7 @@ test("phone and desktop save optional fields, preserve invalid input, and recove
     .getByLabel("Note (optional)")
     .fill("Coffee <script>literal</script>");
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Entry needs attention" }),
-  ).toContainText("two decimal places");
+  await expect(notification(page, "two decimal places")).toBeVisible();
   await expect(page.getByLabel("Note (optional)")).toHaveValue(
     "Coffee <script>literal</script>",
   );

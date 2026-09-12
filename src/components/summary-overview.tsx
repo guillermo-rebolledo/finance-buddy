@@ -23,7 +23,6 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,10 +83,8 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   // currently in flight, so exactly one control reads as busy.
   const [removing, setRemoving] = useState<Entry | null>(null);
   const [deletingId, setDeletingId] = useState("");
-  const [removeError, setRemoveError] = useState("");
   const [kind, setKind] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
   const [uncertain, setUncertain] = useState(false);
   const pending = useRef<EntryInput | null>(null);
   const inFlight = useRef(false);
@@ -96,7 +93,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   );
   const fieldProps = (name: string) => ({
     "aria-invalid": invalidField === name,
-    "aria-describedby": invalidField === name ? "entry-error" : undefined,
   });
   // What an unconfirmed write means depends on the write: a recording could be
   // duplicated by a replacement, a correction only writes the same values again.
@@ -105,12 +101,9 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       ? "The correction could not be confirmed. Retry this same entry safely; it writes the same values again."
       : "Save could not be confirmed. Retry this same entry safely; do not create a replacement.";
   const form = useRef<HTMLFormElement>(null);
-  // A refused write stays beside the form while it is open, and is announced as
-  // a notification too, so the outcome is noticed wherever the owner is looking.
-  function refuse(message: string) {
-    setError(message);
-    toast.error(message);
-  }
+  // Every refusal is announced once, as a notification; the form keeps its
+  // values and marks the field at fault, if any.
+  const refuse = (message: string) => toast.error(message);
   // The control pressed is gone once the form closes or the row leaves, so focus
   // moves to the list the outcome changed instead of falling to the body.
   const focusEntries = () =>
@@ -125,7 +118,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     setUncertain(false);
     setEditing(entry);
     setKind(entry?.kind ?? "");
-    setError("");
     setInvalidField(null);
     setOpen(true);
     requestAnimationFrame(() => document.getElementById("kind")?.focus());
@@ -135,7 +127,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   async function remove(entry: Entry) {
     if (deletingId) return;
     setDeletingId(entry.id);
-    setRemoveError("");
     try {
       const response = await fetch("/api/journal", {
         method: "DELETE",
@@ -144,7 +135,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       });
       const result = await response.json();
       if (!response.ok) {
-        setRemoveError(
+        refuse(
           result.error ||
             "The deletion could not be confirmed. Retry it safely.",
         );
@@ -159,7 +150,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       await show(view);
       focusEntries();
     } catch {
-      setRemoveError("The deletion could not be confirmed. Retry it safely.");
+      refuse("The deletion could not be confirmed. Retry it safely.");
     } finally {
       setDeletingId("");
     }
@@ -197,15 +188,16 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       setSaving(false);
       refuse(invalid.message);
       setInvalidField(invalid.field);
-      requestAnimationFrame(() =>
-        document.getElementById("entry-error")?.focus(),
-      );
+      // The field at fault takes focus, so the owner lands where the fix goes.
+      if (invalid.field)
+        requestAnimationFrame(() =>
+          document.getElementById(invalid.field!)?.focus(),
+        );
       return;
     }
     pending.current = entry;
     inFlight.current = true;
     setSaving(true);
-    setError("");
     setInvalidField(null);
     try {
       const response = await fetch("/api/journal", {
@@ -446,12 +438,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                   </Field>
                 </FieldGroup>
               </fieldset>
-              {error && (
-                <Alert variant="destructive" id="entry-error" tabIndex={-1}>
-                  <AlertTitle>Entry needs attention</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
               <div className="flex flex-wrap gap-3">
                 <Button type="submit" size="lg" disabled={saving}>
                   {saving
@@ -470,7 +456,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                   onClick={() => {
                     setOpen(false);
                     setEditing(null);
-                    setError("");
                     setInvalidField(null);
                   }}
                 >
@@ -535,10 +520,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           variant="destructive"
-                          onSelect={() => {
-                            setRemoveError("");
-                            setRemoving(entry);
-                          }}
+                          onSelect={() => setRemoving(entry)}
                         >
                           <Trash2Icon />
                           Delete
@@ -569,7 +551,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         onOpenChange={(next) => {
           if (deletingId || next) return;
           setRemoving(null);
-          setRemoveError("");
         }}
       >
         {removing && (
@@ -585,12 +566,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                 includes it. This cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
-            {removeError && (
-              <Alert variant="destructive">
-                <AlertTitle>Deletion needs attention</AlertTitle>
-                <AlertDescription>{removeError}</AlertDescription>
-              </Alert>
-            )}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deletingId !== ""}>
                 Keep entry

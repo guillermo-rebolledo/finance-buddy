@@ -105,17 +105,13 @@ test("an entry is corrected through the form and both periods it touches agree",
   // values on screen without claiming success.
   await page.getByLabel("Amount (MXN)").fill("12.345");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Entry needs attention" }),
-  ).toContainText("two decimal places");
+  await expect(notification(page, "two decimal places")).toBeVisible();
   await expect(page.getByLabel("Note (optional)")).toHaveValue("Weekly shop");
   expect((await report(page)).expenses).toBe("1200.00");
   await page.getByLabel("Amount (MXN)").fill("999.99");
   await page.getByLabel("Movement date", { exact: true }).fill("2026-09-07");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Entry needs attention" }),
-  ).toContainText("today or earlier");
+  await expect(notification(page, "today or earlier")).toBeVisible();
   // A valid correction moves the entry, its totals and its breakdown at once.
   await page.getByLabel("Movement date", { exact: true }).fill("2026-09-02");
   await choose(page, "Category (optional)", "Dining");
@@ -376,10 +372,9 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
     .getByRole("button", { name: "Delete permanently" })
     .click();
   await expect(
-    page
-      .getByRole("alertdialog")
-      .filter({ hasText: "Deletion needs attention" }),
+    notification(page, "The deletion could not be confirmed"),
   ).toBeVisible();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
   await page.unroute("**/api/journal");
   expect((await report(page)).entries).toHaveLength(1);
   await page
@@ -577,9 +572,7 @@ test("an unconfirmed correction keeps the form and is retried safely", async ({
   });
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   // No success is claimed, the values stay on screen, and the form stays open.
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Entry needs attention" }),
-  ).toContainText("Retry this same entry safely");
+  await expect(notification(page, "Retry this same entry safely")).toBeVisible();
   await expect(notification(page, "Entry updated")).toHaveCount(0);
   await expect(page.getByLabel("Amount (MXN)")).toHaveValue("45.50");
   await expect(page.getByLabel("Amount (MXN)")).toBeDisabled();
