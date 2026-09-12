@@ -212,3 +212,19 @@ export async function optionsOf(
   await expect(page.getByRole("listbox")).toHaveCount(0);
   return names;
 }
+// Entry actions live in each row's menu, named by the entry they act on.
+export async function entryAction(
+  page: import("@playwright/test").Page,
+  action: "Edit" | "Delete",
+  entry: string,
+) {
+  await page.getByRole("button", { name: `Actions for ${entry}` }).click();
+  await page.getByRole("menuitem", { name: action, exact: true }).click();
+}
+// An outcome announced as a notification rather than written into the page.
+export function notification(
+  page: import("@playwright/test").Page,
+  text: string,
+) {
+  return page.locator("[data-sonner-toast]").filter({ hasText: text });
+}

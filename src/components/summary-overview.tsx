@@ -1,6 +1,8 @@
 "use client";
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { EllipsisIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
 import {
   entryKindDetail,
   entryKinds,
@@ -31,8 +33,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Empty,
   EmptyHeader,
@@ -81,7 +88,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   const [kind, setKind] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [uncertain, setUncertain] = useState(false);
   const pending = useRef<EntryInput | null>(null);
   const inFlight = useRef(false);
@@ -99,6 +105,18 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       ? "The correction could not be confirmed. Retry this same entry safely; it writes the same values again."
       : "Save could not be confirmed. Retry this same entry safely; do not create a replacement.";
   const form = useRef<HTMLFormElement>(null);
+  // A refused write stays beside the form while it is open, and is announced as
+  // a notification too, so the outcome is noticed wherever the owner is looking.
+  function refuse(message: string) {
+    setError(message);
+    toast.error(message);
+  }
+  // The control pressed is gone once the form closes or the row leaves, so focus
+  // moves to the list the outcome changed instead of falling to the body.
+  const focusEntries = () =>
+    requestAnimationFrame(() =>
+      document.getElementById("entries-heading")?.focus(),
+    );
   // One place opens the form for either purpose, on a period just reloaded, so
   // no stale message, marked field or previous entry's values survive into it.
   async function openForm(entry: Entry | null) {
@@ -109,18 +127,15 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     setKind(entry?.kind ?? "");
     setError("");
     setInvalidField(null);
-    setSuccess("");
     setOpen(true);
     requestAnimationFrame(() => document.getElementById("kind")?.focus());
   }
   // Deletion is permanent, so it happens only from the confirmation and only
-  // once while pending. The control pressed is gone afterwards, along with the
-  // row, so the outcome takes focus instead of the body.
+  // once while pending.
   async function remove(entry: Entry) {
     if (deletingId) return;
     setDeletingId(entry.id);
     setRemoveError("");
-    setSuccess("");
     try {
       const response = await fetch("/api/journal", {
         method: "DELETE",
@@ -140,11 +155,9 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         setOpen(false);
         setEditing(null);
       }
-      setSuccess(`Deleted ${entryTitle(entry)}.`);
+      toast.success(`Deleted ${entryTitle(entry)}.`);
       await show(view);
-      requestAnimationFrame(() =>
-        document.getElementById("entry-status")?.focus(),
-      );
+      focusEntries();
     } catch {
       setRemoveError("The deletion could not be confirmed. Retry it safely.");
     } finally {
@@ -171,7 +184,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     const current = await show(view);
     if (!current) {
       setInvalidField(null);
-      setError(
+      refuse(
         "Could not check the current date. Your input is preserved; retry when the overview is available.",
       );
       inFlight.current = false;
@@ -182,7 +195,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     if (invalid) {
       inFlight.current = false;
       setSaving(false);
-      setError(invalid.message);
+      refuse(invalid.message);
       setInvalidField(invalid.field);
       requestAnimationFrame(() =>
         document.getElementById("entry-error")?.focus(),
@@ -194,7 +207,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     setSaving(true);
     setError("");
     setInvalidField(null);
-    setSuccess("");
     try {
       const response = await fetch("/api/journal", {
         method: editing ? "PATCH" : "POST",
@@ -208,7 +220,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           setUncertain(false);
         } else setUncertain(true);
         setInvalidField(result.field ?? null);
-        setError(result.error || unconfirmed());
+        refuse(result.error || unconfirmed());
         return;
       }
       pending.current = null;
@@ -216,7 +228,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       // A moved entry leaves one period and enters another, so the reply says
       // where it went rather than implying the period on screen holds it.
       const outcome = editing ? "Entry updated" : "Entry saved";
-      setSuccess(
+      toast.success(
         entry.date < current.start || entry.date > current.end
           ? `${outcome} for ${entry.date}, outside the period you are viewing. Jump to that date to see it.`
           : `${outcome}.`,
@@ -226,12 +238,10 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       setOpen(false);
       setEditing(null);
       await show(view);
-      requestAnimationFrame(() =>
-        document.getElementById("entry-status")?.focus(),
-      );
+      focusEntries();
     } catch {
       setUncertain(true);
-      setError(unconfirmed());
+      refuse(unconfirmed());
     } finally {
       inFlight.current = false;
       setSaving(false);
@@ -290,11 +300,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         loaded={loaded}
         onShow={show}
       />
-      {success && (
-        <p role="status" id="entry-status" tabIndex={-1}>
-          {success}
-        </p>
-      )}
       {loadError && (
         <PeriodUnavailable
           requestedLabel={requestedLabel}
@@ -480,111 +485,66 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         <Card>
           <CardHeader>
             <CardTitle>
-              <h2>Entries</h2>
+              <h2 id="entries-heading" tabIndex={-1} className="outline-none">
+                Entries
+              </h2>
             </CardTitle>
             <CardDescription>Latest movement date first.</CardDescription>
           </CardHeader>
           <CardContent>
             {summary.entries.length ? (
+              // One row per entry, read left to right like a table without
+              // its grid: what it is, when and why, how much, and its actions.
               <ul className="divide-y">
                 {summary.entries.map((entry) => (
-                  <li
-                    key={entry.id}
-                    className="flex flex-col gap-2 py-4 first:pt-0"
-                  >
-                    <div className="flex flex-wrap justify-between gap-2">
-                      <span className="font-medium">
+                  <li key={entry.id} className="flex items-center gap-3 py-2">
+                    <div className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:gap-3">
+                      <span className="truncate text-sm font-medium sm:w-48 sm:shrink-0">
                         {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
                         {entry.category}
                       </span>
-                      <span className="font-medium tabular-nums">
-                        {money(signedAmount(entry))}
-                      </span>
+                      <div className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground sm:text-sm">
+                        <time className="shrink-0 tabular-nums" dateTime={entry.date}>
+                          {entry.date}
+                        </time>
+                        {entry.note && (
+                          <span className="truncate" title={entry.note}>
+                            {entry.note}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <time
-                      className="text-sm text-muted-foreground"
-                      dateTime={entry.date}
-                    >
-                      {entry.date}
-                    </time>
-                    {entry.note && (
-                      <p className="whitespace-pre-wrap break-words text-sm">
-                        {entry.note}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        aria-label={`Edit ${entryTitle(entry)}`}
-                        disabled={loading || saving || deletingId !== ""}
-                        onClick={() => openForm(entry)}
-                      >
-                        Edit
-                      </Button>
-                      <AlertDialog
-                        open={removing?.id === entry.id}
-                        onOpenChange={(next) => {
-                          if (deletingId) return;
-                          setRemoving(next ? entry : null);
-                          setRemoveError("");
-                        }}
-                      >
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            aria-label={`Delete ${entryTitle(entry)}`}
-                            disabled={loading || saving || deletingId !== ""}
-                          >
-                            Delete
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>
-                              Delete this entry permanently?
-                            </AlertDialogTitle>
-                            <AlertDialogDescription>
-                              {entryTitle(entry)}
-                              {entry.categoryId
-                                ? `, in ${entry.category}.`
-                                : ", uncategorized."}{" "}
-                              It leaves your journal and every day, week, and
-                              month total that includes it. This cannot be
-                              undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          {removeError && (
-                            <Alert variant="destructive">
-                              <AlertTitle>Deletion needs attention</AlertTitle>
-                              <AlertDescription>{removeError}</AlertDescription>
-                            </Alert>
-                          )}
-                          <AlertDialogFooter>
-                            <AlertDialogCancel disabled={deletingId !== ""}>
-                              Keep entry
-                            </AlertDialogCancel>
-                            <AlertDialogAction
-                              className={buttonVariants({
-                                variant: "destructive",
-                              })}
-                              disabled={deletingId !== ""}
-                              onClick={(event) => {
-                                // The dialog closes only once the deletion is
-                                // confirmed by the server.
-                                event.preventDefault();
-                                remove(entry);
-                              }}
-                            >
-                              {deletingId === entry.id
-                                ? "Deleting…"
-                                : "Delete permanently"}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                    <span className="shrink-0 text-sm font-medium tabular-nums">
+                      {money(signedAmount(entry))}
+                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Actions for ${entryTitle(entry)}`}
+                          disabled={loading || saving || deletingId !== ""}
+                        >
+                          <EllipsisIcon />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => openForm(entry)}>
+                          <PencilIcon />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={() => {
+                            setRemoveError("");
+                            setRemoving(entry);
+                          }}
+                        >
+                          <Trash2Icon />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </li>
                 ))}
               </ul>
@@ -602,6 +562,55 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           </CardContent>
         </Card>
       )}
+      {/* One confirmation serves every row, since a row's menu closes as soon
+          as Delete is chosen. */}
+      <AlertDialog
+        open={removing !== null}
+        onOpenChange={(next) => {
+          if (deletingId || next) return;
+          setRemoving(null);
+          setRemoveError("");
+        }}
+      >
+        {removing && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this entry permanently?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {entryTitle(removing)}
+                {removing.categoryId
+                  ? `, in ${removing.category}.`
+                  : ", uncategorized."}{" "}
+                It leaves your journal and every day, week, and month total that
+                includes it. This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {removeError && (
+              <Alert variant="destructive">
+                <AlertTitle>Deletion needs attention</AlertTitle>
+                <AlertDescription>{removeError}</AlertDescription>
+              </Alert>
+            )}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingId !== ""}>
+                Keep entry
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className={buttonVariants({ variant: "destructive" })}
+                disabled={deletingId !== ""}
+                onClick={(event) => {
+                  // The dialog closes only once the deletion is confirmed by
+                  // the server.
+                  event.preventDefault();
+                  remove(removing);
+                }}
+              >
+                {deletingId === removing.id ? "Deleting…" : "Delete permanently"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
     </main>
   );
 }

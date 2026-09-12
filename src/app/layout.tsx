@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { colorSchemeScript } from "@/lib/appearance";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 export const metadata: Metadata = {
   title: "Finance Buddy",
@@ -19,7 +20,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: colorSchemeScript }} />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {children}
+          <Toaster position="top-center" />
+        </ThemeProvider>
       </body>
     </html>
   );

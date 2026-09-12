@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { choose, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
+import { choose, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
 import { centavos } from "../src/lib/financial";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
@@ -130,7 +130,7 @@ test("phone and desktop save optional fields, preserve invalid input, and recove
   ).toBeEnabled();
   await expect(page.getByLabel("Amount (MXN)")).toBeDisabled();
   await page.getByRole("button", { name: "Retry same entry" }).click();
-  await expect(page.getByRole("status")).toHaveText("Entry saved.");
+  await expect(notification(page, "Entry saved.")).toBeVisible();
   expect(
     (await (await page.request.get("/api/journal")).json()).entries,
   ).toHaveLength(1);
@@ -316,9 +316,7 @@ test("movement dates define Monday–Sunday membership and backdated success is 
   await page.getByLabel("Amount (MXN)").fill("100");
   await page.getByLabel("Movement date", { exact: true }).fill("2026-08-30");
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "outside the period you are viewing",
-  );
+  await expect(notification(page, "outside the period you are viewing")).toBeVisible();
   const report = await (await page.request.get("/api/journal")).json();
   expect(report.expenses).toBe("5.00");
   expect(report.entries.map((e: { date: string }) => e.date)).toEqual([
@@ -368,7 +366,7 @@ test("refunds reduce expenses and totals without counting as income", async ({
   await choose(page, "Category (optional)", "Groceries");
   await page.getByLabel("Amount (MXN)").fill("200");
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Entry saved.");
+  await expect(notification(page, "Entry saved.")).toBeVisible();
   const report = await (await page.request.get("/api/journal")).json();
   expect([report.income, report.expenses, report.netChange]).toEqual([
     "10000.00",
@@ -610,7 +608,7 @@ test("an open workspace and form follow Mexico City midnight", async ({
       .evaluate((input: HTMLInputElement) => input.validity.rangeOverflow),
   ).toBe(false);
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Entry saved.");
+  await expect(notification(page, "Entry saved.")).toBeVisible();
   expect((await (await page.request.get("/api/journal")).json()).income).toBe(
     "100.00",
   );

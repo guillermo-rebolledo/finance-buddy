@@ -2,9 +2,11 @@ import { test, expect, type Page } from "@playwright/test";
 import {
   connectSheets,
   createdSpreadsheets,
+  entryAction,
   forgetSpreadsheets,
   googleAnswers,
   moveClockTo,
+  notification,
   resetClock,
   signIn,
   tabRows,
@@ -437,18 +439,14 @@ test("existing snapshots stay unchanged after corrections, deletion and category
     (row: { amount: string }) => row.amount === "45.00",
   );
   await page.goto("/");
-  await page
-    .getByRole("button", { name: `Edit Expense of MXN 300.00 on 2026-09-08` })
-    .click();
+  await entryAction(page, "Edit", "Expense of MXN 300.00 on 2026-09-08");
   await page.getByLabel("Amount (MXN)").fill("275.00");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.locator("#entry-status")).toContainText("Entry updated");
+  await expect(notification(page, "Entry updated")).toBeVisible();
   expect(kept.id).toEqual(expect.any(String));
-  await page
-    .getByRole("button", { name: `Delete Expense of MXN 45.00 on 2026-09-09` })
-    .click();
+  await entryAction(page, "Delete", "Expense of MXN 45.00 on 2026-09-09");
   await page.getByRole("button", { name: "Delete permanently" }).click();
-  await expect(page.locator("#entry-status")).toContainText("Deleted");
+  await expect(notification(page, "Deleted")).toBeVisible();
   expect(dropped.id).toEqual(expect.any(String));
   await page.goto("/categories");
   await page
@@ -456,7 +454,7 @@ test("existing snapshots stay unchanged after corrections, deletion and category
     .click();
   await page.getByLabel("New name for Groceries").fill("Market");
   await page.getByRole("button", { name: "Save name", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Category renamed.");
+  await expect(page.getByRole("status")).toContainText("Category renamed");
   await page.goto("/dashboard");
 
   // The spreadsheet Google received is the same one; nothing was written back.

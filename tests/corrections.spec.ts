@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { choose, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
+import { choose, entryAction, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -85,9 +85,7 @@ test("an entry is corrected through the form and both periods it touches agree",
     note: "Weekly shop",
   });
   await page.reload();
-  await page
-    .getByRole("button", { name: "Edit Expense of MXN 1,200.00 on 2026-09-01" })
-    .click();
+  await entryAction(page, "Edit", "Expense of MXN 1,200.00 on 2026-09-01");
   await expect(
     page.getByRole("heading", { name: "Edit entry", level: 2 }),
   ).toBeVisible();
@@ -123,7 +121,7 @@ test("an entry is corrected through the form and both periods it touches agree",
   await choose(page, "Category (optional)", "Dining");
   await page.getByLabel("Note (optional)").fill("Dinner out");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Entry updated.");
+  await expect(notification(page, "Entry updated.")).toBeVisible();
   await expect(
     page.getByText("Expense · Dining", { exact: true }),
   ).toBeVisible();
@@ -208,9 +206,7 @@ test("a correction keeps an archived category and refuses an incompatible one", 
   );
   // The archived category is offered to this entry only, labelled as archived.
   await page.reload();
-  await page
-    .getByRole("button", { name: "Edit Expense of MXN 450.00 on 2026-09-06" })
-    .click();
+  await entryAction(page, "Edit", "Expense of MXN 450.00 on 2026-09-06");
   await expect(page.getByLabel("Category (optional)")).toHaveText(
     "Groceries (archived)",
   );
@@ -238,7 +234,7 @@ test("a correction keeps an archived category and refuses an incompatible one", 
   );
   await choose(page, "Category (optional)", "Health");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Entry updated.");
+  await expect(notification(page, "Entry updated.")).toBeVisible();
   expect((await report(page)).entries[0].category).toBe("Health");
   // Once replaced, the archived category cannot be chosen again.
   const refused = await edit(page, {
@@ -275,16 +271,14 @@ test("a correction keeps an archived category and refuses an incompatible one", 
   ).toBe(200);
   expect((await report(page)).expenses).toBe("-450.00");
   await page.reload();
-  await page
-    .getByRole("button", { name: "Edit Refund of MXN 450.00 on 2026-09-06" })
-    .click();
+  await entryAction(page, "Edit", "Refund of MXN 450.00 on 2026-09-06");
   await choose(page, "Type", "Income");
   await expect(page.getByLabel("Category (optional)")).toHaveText("Uncategorized");
   expect(
     await optionsOf(page, "Category (optional)"),
   ).toEqual(["Uncategorized", "Freelance", "Other income", "Salary"]);
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Entry updated.");
+  await expect(notification(page, "Entry updated.")).toBeVisible();
   const asIncome = await report(page);
   expect([asIncome.income, asIncome.expenses, asIncome.netChange]).toEqual([
     "450.00",
@@ -313,9 +307,7 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
   });
   await page.reload();
   // The confirmation names the type, the amount and the movement date.
-  await page
-    .getByRole("button", { name: "Delete Refund of MXN 50.00 on 2026-09-06" })
-    .click();
+  await entryAction(page, "Delete", "Refund of MXN 50.00 on 2026-09-06");
   const dialog = page.getByRole("alertdialog");
   await expect(
     dialog.getByRole("heading", { name: "Delete this entry permanently?" }),
@@ -331,17 +323,13 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
   await expect(dialog).toBeHidden();
   expect((await report(page)).entries).toHaveLength(2);
   expect((await report(page)).expenses).toBe("250.00");
-  await page
-    .getByRole("button", { name: "Delete Refund of MXN 50.00 on 2026-09-06" })
-    .click();
+  await entryAction(page, "Delete", "Refund of MXN 50.00 on 2026-09-06");
   await page
     .getByRole("alertdialog")
     .getByRole("button", { name: "Delete permanently" })
     .click();
-  await expect(page.getByRole("status")).toHaveText(
-    "Deleted Refund of MXN 50.00 on 2026-09-06.",
-  );
-  await expect(page.getByRole("status")).toBeFocused();
+  await expect(notification(page, "Deleted Refund of MXN 50.00 on 2026-09-06.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Entries" })).toBeFocused();
   const afterRefund = await report(page);
   expect(afterRefund.entries).toHaveLength(1);
   expect(afterRefund.expenses).toBe("300.00");
@@ -352,9 +340,7 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
   expect((await remove(page, { id: refundId })).status()).toBe(400);
   expect((await report(page)).entries).toHaveLength(1);
   // The expense leaves the day, the week and the month together.
-  await page
-    .getByRole("button", { name: "Delete Expense of MXN 300.00 on 2026-09-02" })
-    .click();
+  await entryAction(page, "Delete", "Expense of MXN 300.00 on 2026-09-02");
   await page
     .getByRole("alertdialog")
     .getByRole("button", { name: "Delete permanently" })
@@ -381,9 +367,7 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
   // A failed deletion says so and keeps the entry and the confirmation open.
   await post(page, { amount: "7" });
   await page.reload();
-  await page
-    .getByRole("button", { name: "Delete Expense of MXN 7.00 on 2026-09-06" })
-    .click();
+  await entryAction(page, "Delete", "Expense of MXN 7.00 on 2026-09-06");
   await page.route("**/api/journal", async (route) =>
     route.request().method() === "DELETE" ? route.abort() : route.continue(),
   );
@@ -402,7 +386,7 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
     .getByRole("alertdialog")
     .getByRole("button", { name: "Delete permanently" })
     .click();
-  await expect(page.getByRole("status")).toContainText("Deleted Expense");
+  await expect(notification(page, "Deleted Expense")).toBeVisible();
   expect((await report(page)).entries).toHaveLength(0);
 });
 
@@ -434,12 +418,10 @@ test("a purchase and a refund in different months are each corrected accurately"
   await expect(
     page.getByRole("heading", { name: "August 2026", level: 1 }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Edit Expense of MXN 1,200.00 on 2026-08-15" })
-    .click();
+  await entryAction(page, "Edit", "Expense of MXN 1,200.00 on 2026-08-15");
   await page.getByLabel("Amount (MXN)").fill("1000");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Entry updated.");
+  await expect(notification(page, "Entry updated.")).toBeVisible();
   expect((await report(page, august)).expenses).toBe("1000.00");
   // Correct the refund, moving it into the purchase's month.
   await page.getByLabel("Jump to date").fill("2026-09-05");
@@ -447,15 +429,11 @@ test("a purchase and a refund in different months are each corrected accurately"
   await expect(
     page.getByRole("heading", { name: "This month", level: 1 }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Edit Refund of MXN 200.00 on 2026-09-05" })
-    .click();
+  await entryAction(page, "Edit", "Refund of MXN 200.00 on 2026-09-05");
   await page.getByLabel("Amount (MXN)").fill("250");
   await page.getByLabel("Movement date", { exact: true }).fill("2026-08-20");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "outside the period you are viewing",
-  );
+  await expect(notification(page, "outside the period you are viewing")).toBeVisible();
   // The month it left reports no activity; the month it entered nets both.
   const left = await report(page, september);
   expect([left.income, left.expenses, left.netChange]).toEqual([
@@ -587,9 +565,7 @@ test("an unconfirmed correction keeps the form and is retried safely", async ({
   await overview(page);
   const id = await post(page, { amount: "40", note: "Taxi" });
   await page.reload();
-  await page
-    .getByRole("button", { name: "Edit Expense of MXN 40.00 on 2026-09-06" })
-    .click();
+  await entryAction(page, "Edit", "Expense of MXN 40.00 on 2026-09-06");
   await page.getByLabel("Amount (MXN)").fill("45.50");
   await page.getByLabel("Note (optional)").fill("Taxi home");
   let lost = false;
@@ -604,12 +580,12 @@ test("an unconfirmed correction keeps the form and is retried safely", async ({
   await expect(
     page.getByRole("alert").filter({ hasText: "Entry needs attention" }),
   ).toContainText("Retry this same entry safely");
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(notification(page, "Entry updated")).toHaveCount(0);
   await expect(page.getByLabel("Amount (MXN)")).toHaveValue("45.50");
   await expect(page.getByLabel("Amount (MXN)")).toBeDisabled();
   // Retrying writes the same values again rather than adding an entry.
   await page.getByRole("button", { name: "Retry same entry" }).click();
-  await expect(page.getByRole("status")).toHaveText("Entry updated.");
+  await expect(notification(page, "Entry updated.")).toBeVisible();
   const corrected = await report(page);
   expect(corrected.entries).toEqual([
     {
