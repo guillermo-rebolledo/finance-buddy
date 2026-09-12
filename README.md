@@ -40,7 +40,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-`pnpm db:migrate` loads `.env.local` if present. An existing process-level `DATABASE_URL` takes precedence, including the disposable database supplied by the test harness. The checked-in SQL initializes Better Auth's schema, the financial journal (migration `0002_journal.sql`), and refunds (migration `0003_refunds.sql`). The runner applies pending files in one transaction, takes an advisory lock, and records applied names. Repeated runs skip applied migrations. Do not edit an applied migration; add a numbered SQL file. Builds, previews, and application startup never apply migrations.
+`pnpm db:migrate` loads `.env.local` if present. An existing process-level `DATABASE_URL` takes precedence, including the disposable database supplied by the test harness. The checked-in SQL initializes Better Auth's schema, the financial journal (migration `0002_journal.sql`), refunds (migration `0003_refunds.sql`), and the category naming rules (migration `0004_category_lifecycle.sql`). The runner applies pending files in one transaction, takes an advisory lock, and records applied names. Repeated runs skip applied migrations. Do not edit an applied migration; add a numbered SQL file. Builds, previews, and application startup never apply migrations.
 
 For a production-like local run:
 
@@ -92,4 +92,12 @@ References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installa
 
 `POST /api/journal` accepts `{ id, kind, amount, date, categoryId, note }`. Use a stable UUID for retries, `income`, `expense`, or `refund`, a positive decimal string (up to 12 whole digits and two decimal places), an ISO movement date, a nullable category UUID, and a note of at most 2,000 characters. Refunds are entered as positive amounts on their receipt date and accept the owner's active expense categories; an archived category must be restored through category management before a new entry can use it. Ownership comes only from the trusted session. Requests require JSON and the configured Origin. Repeating the same ID/payload returns success without inserting another entry; reusing an ID with different values is rejected.
 
-Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Category management, corrections, historical navigation, and exports remain separate issues. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals.
+Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Corrections and exports remain separate issues. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals.
+
+## Category management
+
+The `/categories` page manages the separate income and expense lists, and is reached from the header on every signed-in page. `GET /api/categories` returns both lists with each category's archived state. `POST /api/categories` accepts one change: `{ action: "create", kind, name }`, `{ action: "rename", id, name }`, or `{ action: "archive" | "restore", id }`. There is no merging, no conversion between lists, and no permanent deletion.
+
+A name is trimmed, holds 1 to 40 characters, carries no control characters, and is unique case-insensitively within one list, counting archived categories, so a taken name is restored or renamed rather than recreated (see `docs/adr/0005-bounded-category-names.md`). A database constraint and unique index enforce the same rules as request validation.
+
+Categories are related to financial movements by identity, never by label text, so a rename shows at once on existing entries, totals, and breakdowns. Archiving removes a category from the choices for new entries while every recorded movement, total, and breakdown keeps it; restoring the same category makes it selectable again without a replacement. Uncategorized reporting is unchanged, and entries stay optional-category. Every read and change is scoped to the signed-in owner by the statement itself, so another owner's category identifier matches nothing.

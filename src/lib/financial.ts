@@ -1,6 +1,25 @@
 export type CategoryKind = "income" | "expense";
 export type EntryKind = "income" | "expense" | "refund";
 export type Category = { id: string; kind: CategoryKind; name: string };
+// A managed category also carries its lifecycle: an archived category stays on
+// its existing financial movements but leaves the choices for new ones.
+export type ManagedCategory = Category & { active: boolean };
+export type CategoryLists = Record<CategoryKind, ManagedCategory[]>;
+export const categoryKindDetails: Record<
+  CategoryKind,
+  { label: string; note: string }
+> = {
+  income: { label: "Income", note: "Where the money you receive comes from." },
+  expense: {
+    label: "Expense",
+    note: "What you spend on. Refunds use these categories too.",
+  },
+};
+export const categoryKinds = Object.keys(categoryKindDetails) as CategoryKind[];
+// Unvalidated input has no descriptor.
+export function categoryKindDetail(kind: string) {
+  return categoryKindDetails[kind as CategoryKind];
+}
 // One descriptor per movement type: its label, the category list it draws from,
 // and how it moves the period total it belongs to. A refund reduces expenses,
 // so it reads from the owner's expense categories and carries a negative sign.
@@ -270,5 +289,96 @@ export function validateEntry(
     return { field: "categoryId", message: "Choose an available category." };
   if (typeof entry.note !== "string" || entry.note.length > 2000)
     return { field: "note", message: "Keep the note within 2,000 characters." };
+  return null;
+}
+
+// One descriptor per category change: how the control reads while idle, busy and
+// done, whether it names a category and whether it targets an existing one.
+export type CategoryAction = "create" | "rename" | "archive" | "restore";
+export const categoryActionDetails: Record<
+  CategoryAction,
+  {
+    label: string;
+    pending: string;
+    done: string;
+    named: boolean;
+    targeted: boolean;
+  }
+> = {
+  create: {
+    label: "Add",
+    pending: "Adding…",
+    done: "Category added.",
+    named: true,
+    targeted: false,
+  },
+  rename: {
+    label: "Save name",
+    pending: "Saving…",
+    done: "Category renamed.",
+    named: true,
+    targeted: true,
+  },
+  archive: {
+    label: "Archive",
+    pending: "Archiving…",
+    done: "Category archived. Existing entries and totals keep it.",
+    named: false,
+    targeted: true,
+  },
+  restore: {
+    label: "Restore",
+    pending: "Restoring…",
+    done: "Category restored.",
+    named: false,
+    targeted: true,
+  },
+};
+export function categoryActionDetail(action: string) {
+  return categoryActionDetails[action as CategoryAction];
+}
+export type CategoryChange =
+  | { action: "create"; kind: CategoryKind; name: string }
+  | { action: "rename"; id: string; name: string }
+  | { action: "archive" | "restore"; id: string };
+export type CategoryError = {
+  field: "action" | "kind" | "id" | "name" | null;
+  message: string;
+};
+// Bounded naming policy: a category name is trimmed, holds at least one visible
+// character, stays within 40 characters and carries no line breaks or other
+// control characters. Uniqueness is case-insensitive within one list and counts
+// archived categories, so a name is restored rather than recreated.
+export const categoryNameLimit = 40;
+export function categoryName(name: string) {
+  return name.trim();
+}
+export const categoryNameRule = `Enter a name of 1 to ${categoryNameLimit} characters.`;
+export const categoryNameTaken =
+  "You already have a category with that name in this list. Rename or restore that one instead.";
+export const categoryMissing =
+  "That category is not in your lists. Reload and try again.";
+export function validateCategoryChange(input: unknown): CategoryError | null {
+  if (!input || typeof input !== "object")
+    return { field: null, message: "Choose a change to make." };
+  const change = input as Record<string, unknown>;
+  const detail =
+    typeof change.action === "string"
+      ? categoryActionDetail(change.action)
+      : undefined;
+  if (!detail) return { field: "action", message: "Choose a change to make." };
+  if (
+    detail.targeted &&
+    (typeof change.id !== "string" || !uuidPattern.test(change.id))
+  )
+    return { field: "id", message: categoryMissing };
+  if (!detail.targeted && !categoryKindDetail(change.kind as string))
+    return { field: "kind", message: "Choose the income or expense list." };
+  if (detail.named) {
+    const name =
+      typeof change.name === "string" ? categoryName(change.name) : "";
+    if (!name || name.length > categoryNameLimit || /\p{C}/u.test(name))
+      return { field: "name", message: categoryNameRule };
+  }
   return null;
 }

@@ -16,7 +16,7 @@ import {
   type SummaryRequest,
 } from "./financial";
 let pool: Pool;
-function database() {
+export function database() {
   const config = getConfig();
   if (!config) throw new Error("Workspace unavailable");
   return (pool ??= new Pool({
@@ -26,7 +26,9 @@ function database() {
     query_timeout: 5000,
   }));
 }
-async function seedCategories(owner: string) {
+// Starter categories are inserted exactly once per owner, recorded by the seed
+// row, so renamed or archived starters are never reseeded or duplicated.
+export async function seedCategories(owner: string) {
   const client = await database().connect();
   try {
     await client.query("BEGIN");
