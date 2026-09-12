@@ -4,6 +4,15 @@ import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
 const origin = "http://127.0.0.1:3100";
+// Every request body starts from one recorded expense, so each case states only
+// the fields it is actually about.
+const entry = {
+  kind: "expense",
+  amount: "1.00",
+  date: "2026-09-06",
+  categoryId: null,
+  note: "",
+};
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 test.beforeEach(async () => {
   await pool.query("TRUNCATE financial_movement, category, category_seed");
@@ -28,15 +37,7 @@ async function post(
   const id = randomUUID();
   const response = await page.request.post("/api/journal", {
     headers: { Origin: origin },
-    data: {
-      id,
-      kind: "expense",
-      amount: "1.00",
-      date: "2026-09-06",
-      categoryId: null,
-      note: "",
-      ...fields,
-    },
+    data: { id, ...entry, ...fields },
   });
   expect(response.status()).toBe(200);
   return id;
@@ -47,14 +48,7 @@ async function edit(
 ) {
   return page.request.patch("/api/journal", {
     headers: { Origin: origin },
-    data: {
-      kind: "expense",
-      amount: "1.00",
-      date: "2026-09-06",
-      categoryId: null,
-      note: "",
-      ...fields,
-    },
+    data: { ...entry, ...fields },
   });
 }
 async function remove(
@@ -237,6 +231,14 @@ test("a correction keeps an archived category and refuses an incompatible one", 
     "Utilities",
   ]);
   // Replacing it permits an active compatible category or none at all.
+  await page
+    .getByLabel("Category (optional)")
+    .selectOption({ label: "Health" });
+  // Leaving the expense list clears the category; coming back offers it again.
+  await page.getByLabel("Type", { exact: true }).selectOption("income");
+  await expect(page.getByLabel("Category (optional)")).toHaveValue("");
+  await page.getByLabel("Type", { exact: true }).selectOption("expense");
+  await expect(page.getByLabel("Category (optional)")).toHaveValue(groceries);
   await page
     .getByLabel("Category (optional)")
     .selectOption({ label: "Health" });
@@ -585,4 +587,49 @@ test("corrections and deletions reach only the signed-in owner's entries", async
     ).toBe(403);
   }
   expect((await report(page)).entries).toHaveLength(1);
+});
+
+test("an unconfirmed correction keeps the form and is retried safely", async ({
+  page,
+}) => {
+  await overview(page);
+  const id = await post(page, { amount: "40", note: "Taxi" });
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Edit Expense of MXN 40.00 on 2026-09-06" })
+    .click();
+  await page.getByLabel("Amount (MXN)").fill("45.50");
+  await page.getByLabel("Note (optional)").fill("Taxi home");
+  let lost = false;
+  await page.route("**/api/journal", async (route) => {
+    if (route.request().method() !== "PATCH" || lost) return route.continue();
+    lost = true;
+    await route.fetch(); // The database commits; only the response is lost.
+    await route.abort();
+  });
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  // No success is claimed, the values stay on screen, and the form stays open.
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Entry needs attention" }),
+  ).toContainText("Retry this same entry safely");
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(page.getByLabel("Amount (MXN)")).toHaveValue("45.50");
+  await expect(page.getByLabel("Amount (MXN)")).toBeDisabled();
+  // Retrying writes the same values again rather than adding an entry.
+  await page.getByRole("button", { name: "Retry same entry" }).click();
+  await expect(page.getByRole("status")).toHaveText("Entry updated.");
+  const corrected = await report(page);
+  expect(corrected.entries).toEqual([
+    {
+      id,
+      kind: "expense",
+      amount: "45.50",
+      currency: "MXN",
+      date: "2026-09-06",
+      categoryId: null,
+      category: "Uncategorized",
+      note: "Taxi home",
+    },
+  ]);
+  expect(corrected.expenses).toBe("45.50");
 });

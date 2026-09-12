@@ -269,11 +269,8 @@ export function validateEntry(
   if (!input || typeof input !== "object")
     return { field: null, message: "Enter a valid financial movement." };
   const entry = input as EntryInput;
-  if (typeof entry.id !== "string" || !uuidPattern.test(entry.id))
-    return {
-      field: "id",
-      message: "Invalid entry identifier. Reload and try again.",
-    };
+  const target = validateEntryTarget(input);
+  if (target) return target;
   if (typeof entry.kind !== "string" || !entryKindDetail(entry.kind))
     return { field: "kind", message: "Choose income, expense, or refund." };
   if (

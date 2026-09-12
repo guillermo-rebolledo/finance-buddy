@@ -71,7 +71,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   // The entry whose permanent deletion awaits confirmation, and the deletion
   // currently in flight, so exactly one control reads as busy.
   const [removing, setRemoving] = useState<Entry | null>(null);
-  const [deleting, setDeleting] = useState("");
+  const [deletingId, setDeletingId] = useState("");
   const [removeError, setRemoveError] = useState("");
   const [kind, setKind] = useState("");
   const [saving, setSaving] = useState(false);
@@ -87,6 +87,12 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     "aria-invalid": invalidField === name,
     "aria-describedby": invalidField === name ? "entry-error" : undefined,
   });
+  // What an unconfirmed write means depends on the write: a recording could be
+  // duplicated by a replacement, a correction only writes the same values again.
+  const unconfirmed = () =>
+    editing
+      ? "The correction could not be confirmed. Retry this same entry safely; it writes the same values again."
+      : "Save could not be confirmed. Retry this same entry safely; do not create a replacement.";
   const form = useRef<HTMLFormElement>(null);
   const requested = useRef(0);
   // One request per period selection: the label, totals, breakdown and rows on
@@ -133,8 +139,8 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   // once while pending. The control pressed is gone afterwards, along with the
   // row, so the outcome takes focus instead of the body.
   async function remove(entry: Entry) {
-    if (deleting) return;
-    setDeleting(entry.id);
+    if (deletingId) return;
+    setDeletingId(entry.id);
     setRemoveError("");
     setSuccess("");
     try {
@@ -164,7 +170,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     } catch {
       setRemoveError("The deletion could not be confirmed. Retry it safely.");
     } finally {
-      setDeleting("");
+      setDeletingId("");
     }
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -221,25 +227,18 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           setUncertain(false);
         } else setUncertain(true);
         setInvalidField(result.field ?? null);
-        setError(
-          result.error ||
-            "Save could not be confirmed. Retry this entry safely.",
-        );
+        setError(result.error || unconfirmed());
         return;
       }
       pending.current = null;
       setUncertain(false);
       // A moved entry leaves one period and enters another, so the reply says
       // where it went rather than implying the period on screen holds it.
-      const outside = entry.date < current.start || entry.date > current.end;
+      const outcome = editing ? "Entry updated" : "Entry saved";
       setSuccess(
-        editing
-          ? outside
-            ? `Entry updated for ${entry.date}, outside the period you are viewing. Both periods now reflect the change; jump to that date to see it.`
-            : "Entry updated."
-          : outside
-            ? `Entry saved for ${entry.date}, outside the period you are viewing. Jump to that date to see it.`
-            : "Entry saved.",
+        entry.date < current.start || entry.date > current.end
+          ? `${outcome} for ${entry.date}, outside the period you are viewing. Jump to that date to see it.`
+          : `${outcome}.`,
       );
       form.current?.reset();
       setKind("");
@@ -251,9 +250,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       );
     } catch {
       setUncertain(true);
-      setError(
-        "Save could not be confirmed. Retry this same entry safely; do not create a replacement.",
-      );
+      setError(unconfirmed());
     } finally {
       inFlight.current = false;
       setSaving(false);
@@ -264,13 +261,22 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   const anchor = view.date ?? summary?.date ?? "";
   // The category an entry already carries stays selectable while another field
   // changes, including an archived one, as long as the chosen type reads the
-  // same category list. Choosing another type clears it with the field's reset.
+  // same category list. The field is keyed by type, so choosing a type that
+  // reads the other list clears the category and returning offers it again.
   const retained =
     editing?.categoryId &&
     entryKindDetail(editing.kind)?.categoryKind ===
       entryKindDetail(kind)?.categoryKind
       ? editing
       : null;
+  // Only an archived category needs explaining: it is on this entry and on no
+  // list of choices, so it is offered here and nowhere else.
+  const archived = Boolean(
+    retained &&
+    !summary?.categories.some(
+      (category) => category.id === retained.categoryId,
+    ),
+  );
   // Every label describes the period actually loaded, so a failed or pending
   // selection never relabels figures that came from another period.
   const loaded = summary && periodKindDetails[summary.kind];
@@ -493,14 +499,11 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                       <NativeSelectOption value="">
                         Uncategorized
                       </NativeSelectOption>
-                      {retained &&
-                        !summary.categories.some(
-                          (category) => category.id === retained.categoryId,
-                        ) && (
-                          <NativeSelectOption value={retained.categoryId!}>
-                            {retained.category} (archived)
-                          </NativeSelectOption>
-                        )}
+                      {archived && retained && (
+                        <NativeSelectOption value={retained.categoryId!}>
+                          {retained.category} (archived)
+                        </NativeSelectOption>
+                      )}
                       {summary.categories
                         .filter(
                           (category) =>
@@ -516,11 +519,11 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                           </NativeSelectOption>
                         ))}
                     </NativeSelect>
-                    {retained && (
+                    {archived && retained && (
                       <p className="text-sm text-muted-foreground">
-                        This entry keeps its category while you change another
-                        field. Replacing it offers your active categories, or no
-                        category at all.
+                        {retained.category} is archived. This entry keeps it
+                        while you change another field. Replacing it offers your
+                        active categories, or no category at all.
                       </p>
                     )}
                     {kind === "refund" && (
@@ -677,7 +680,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                           variant="outline"
                           size="sm"
                           aria-label={`Edit ${entryTitle(entry)}`}
-                          disabled={loading || saving || deleting !== ""}
+                          disabled={loading || saving || deletingId !== ""}
                           onClick={() => openForm(entry)}
                         >
                           Edit
@@ -685,7 +688,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                         <AlertDialog
                           open={removing?.id === entry.id}
                           onOpenChange={(next) => {
-                            if (deleting) return;
+                            if (deletingId) return;
                             setRemoving(next ? entry : null);
                             setRemoveError("");
                           }}
@@ -695,7 +698,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                               variant="outline"
                               size="sm"
                               aria-label={`Delete ${entryTitle(entry)}`}
-                              disabled={saving || deleting !== ""}
+                              disabled={loading || saving || deletingId !== ""}
                             >
                               Delete
                             </Button>
@@ -706,8 +709,11 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                                 Delete this entry permanently?
                               </AlertDialogTitle>
                               <AlertDialogDescription>
-                                {entryTitle(entry)}, in {entry.category}. It
-                                leaves your journal and every day, week, and
+                                {entryTitle(entry)}
+                                {entry.categoryId
+                                  ? `, in ${entry.category}.`
+                                  : ", uncategorized."}{" "}
+                                It leaves your journal and every day, week, and
                                 month total that includes it. This cannot be
                                 undone.
                               </AlertDialogDescription>
@@ -723,12 +729,12 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                               </Alert>
                             )}
                             <AlertDialogFooter>
-                              <AlertDialogCancel disabled={deleting !== ""}>
+                              <AlertDialogCancel disabled={deletingId !== ""}>
                                 Keep entry
                               </AlertDialogCancel>
                               <AlertDialogAction
                                 className="bg-destructive text-white hover:bg-destructive/90"
-                                disabled={deleting !== ""}
+                                disabled={deletingId !== ""}
                                 onClick={(event) => {
                                   // The dialog closes only once the deletion is
                                   // confirmed by the server.
@@ -736,7 +742,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                                   remove(entry);
                                 }}
                               >
-                                {deleting === entry.id
+                                {deletingId === entry.id
                                   ? "Deleting…"
                                   : "Delete permanently"}
                               </AlertDialogAction>
