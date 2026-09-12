@@ -22,13 +22,14 @@ test.afterAll(async () => {
   await pool.end();
   await resetClock();
 });
-// Exports always start from the overview the owner actually sees, on the week of
-// Monday 2026-08-31 through Sunday 2026-09-06 in Mexico City.
+// Exports always start from the dashboard the owner actually sees, on the week
+// of Monday 2026-08-31 through Sunday 2026-09-06 in Mexico City.
 async function overview(page: Page) {
   await signIn(page);
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   await moveClockTo("2026-09-07T05:30:00Z");
-  await page.reload();
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   return (await page.request.get("/api/journal")).json();
 }
 async function post(page: Page, fields: Record<string, unknown> = {}) {

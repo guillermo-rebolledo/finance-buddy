@@ -68,6 +68,12 @@ The sum of recorded expenses minus refunds received within the summary period. A
 **Uncategorized**:
 The reporting group for financial movements that have no category. Expenses in this group remain included in total expenses and spending breakdowns.
 
+**Trend**:
+How total income, total expenses, and net change moved across consecutive summary periods of one kind, together with spending by category across the whole stretch. A trend describes the same financial movements a summary does, grouped by the same calendar boundaries.
+
+**Trend span**:
+The consecutive summary periods a trend covers, ending with the selected summary period: fourteen days, twelve weeks, or twelve months. Each trend is presented beside the equally long span immediately before it, so a figure reads as rising or falling rather than as a bare amount.
+
 **Financial report**:
 A human-readable presentation of recorded income, expenses, and their summaries, intended for reading, printing, or sharing.
 

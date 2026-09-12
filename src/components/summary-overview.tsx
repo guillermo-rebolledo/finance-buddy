@@ -1,23 +1,16 @@
 "use client";
 import { useRef, useState } from "react";
+import Link from "next/link";
 import {
   entryKindDetail,
   entryKinds,
   entryKindDetails,
   entryTitle,
-  isCalendarDate,
   money,
-  periodKindDetails,
-  periodKinds,
-  periodLabel,
-  shiftPeriod,
   signedAmount,
-  signedMoney,
-  summaryPeriod,
   validateEntry,
   type Entry,
   type EntryInput,
-  type PeriodKind,
   type Summary,
 } from "@/lib/financial";
 import { Button } from "@/components/ui/button";
@@ -53,22 +46,18 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { SheetsExport } from "@/components/sheets-export";
+import {
+  PeriodNavigation,
+  PeriodUnavailable,
+  usePeriodView,
+} from "@/components/period-view";
 
-const exportFailed =
-  "The PDF could not be created, and your journal is unchanged. Retry the export.";
-
+// The registry is where movements are recorded, corrected and removed: one
+// period's entries as a compact list, and nothing that summarizes them. Totals,
+// category figures and trends live on the dashboard.
 export function SummaryOverview({ initial }: { initial: Summary | null }) {
-  const [summary, setSummary] = useState(initial);
-  // The period the controls ask for. A null date follows Mexico City's current
-  // date, so an open page keeps resolving the current period across midnight
-  // without ever trusting the browser clock.
-  const [view, setView] = useState<{ kind: PeriodKind; date: string | null }>({
-    kind: initial?.kind ?? "week",
-    date: null,
-  });
-  const [loadError, setLoadError] = useState(!initial);
-  const [loading, setLoading] = useState(false);
+  const { summary, view, anchor, loading, loadError, show, loaded, title, requestedLabel } =
+    usePeriodView({ summary: initial, trend: null }, false, "Your entries");
   const [open, setOpen] = useState(false);
   // The entry the open form corrects, or null while a new one is recorded.
   const [editing, setEditing] = useState<Entry | null>(null);
@@ -77,9 +66,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   const [removing, setRemoving] = useState<Entry | null>(null);
   const [deletingId, setDeletingId] = useState("");
   const [removeError, setRemoveError] = useState("");
-  // The export in flight, and why the last one could not be delivered.
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState("");
   const [kind, setKind] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -101,33 +87,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       ? "The correction could not be confirmed. Retry this same entry safely; it writes the same values again."
       : "Save could not be confirmed. Retry this same entry safely; do not create a replacement.";
   const form = useRef<HTMLFormElement>(null);
-  const requested = useRef(0);
-  // One request per period selection: the label, totals, breakdown and rows on
-  // screen always come from a single resolved period, never a mixture.
-  async function show(next: { kind: PeriodKind; date: string | null }) {
-    setView(next);
-    const query = new URLSearchParams({ kind: next.kind });
-    if (next.date) query.set("date", next.date);
-    const sequence = ++requested.current;
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/journal?${query}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error();
-      const latest: Summary = await response.json();
-      // A slower earlier request must not replace the period now on screen.
-      if (sequence === requested.current) {
-        setSummary(latest);
-        setLoadError(false);
-      }
-      return latest;
-    } catch {
-      if (sequence === requested.current) setLoadError(true);
-    } finally {
-      if (sequence === requested.current) setLoading(false);
-    }
-  }
   // One place opens the form for either purpose, on a period just reloaded, so
   // no stale message, marked field or previous entry's values survive into it.
   async function openForm(entry: Entry | null) {
@@ -178,51 +137,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       setRemoveError("The deletion could not be confirmed. Retry it safely.");
     } finally {
       setDeletingId("");
-    }
-  }
-  // The snapshot covers the period whose figures are on screen, named by the
-  // summary the server resolved, so an export never quietly switches period.
-  // The document arrives with the reply and is never stored or linked.
-  async function exportReport() {
-    if (!summary || exporting) return;
-    setExporting(true);
-    setExportError("");
-    setSuccess("");
-    try {
-      const query = new URLSearchParams({
-        kind: summary.kind,
-        date: summary.date,
-      });
-      const response = await fetch(`/api/journal/export?${query}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        // A refused export says why it was refused, so an expired session does
-        // not read as a document that failed to render.
-        const refusal = await response.json().catch(() => null);
-        setExportError(refusal?.error || exportFailed);
-        return;
-      }
-      const name =
-        /filename="([^"]+)"/.exec(
-          response.headers.get("Content-Disposition") ?? "",
-        )?.[1] ?? "finance-buddy.pdf";
-      const address = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a");
-      link.href = address;
-      link.download = name;
-      link.click();
-      // Released only after the download has started: revoking in the same task
-      // cancels it in some browsers.
-      setTimeout(() => URL.revokeObjectURL(address), 10000);
-      setSuccess(`Downloaded ${name}.`);
-      requestAnimationFrame(() =>
-        document.getElementById("entry-status")?.focus(),
-      );
-    } catch {
-      setExportError(exportFailed);
-    } finally {
-      setExporting(false);
     }
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -308,9 +222,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       setSaving(false);
     }
   }
-  // The date the controls step from: the pending selection, or the period the
-  // server last resolved while the selection still follows today.
-  const anchor = view.date ?? summary?.date ?? "";
   // The category an entry already carries stays selectable while another field
   // changes, including an archived one, as long as the chosen type reads the
   // same category list. The field is keyed by type, so choosing a type that
@@ -329,14 +240,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       (category) => category.id === retained.categoryId,
     ),
   );
-  // Every label describes the period actually loaded, so a failed or pending
-  // selection never relabels figures that came from another period.
-  const loaded = summary && periodKindDetails[summary.kind];
-  const showsToday =
-    summary && summary.today >= summary.start && summary.today <= summary.end;
-  const requestedLabel = anchor
-    ? periodLabel(view.kind, summaryPeriod(view.kind, anchor))
-    : `the current ${periodKindDetails[view.kind].label.toLowerCase()}`;
   return (
     <main
       aria-busy={loading}
@@ -345,157 +248,45 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-            {summary && loaded
-              ? showsToday
-                ? loaded.current
-                : periodLabel(summary.kind, summary)
-              : "Your summary"}
+            {title}
           </h1>
           <p className="text-muted-foreground">
             {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
           </p>
-          <p className="text-sm text-muted-foreground">Mexico City · MXN</p>
+          <p className="text-sm text-muted-foreground">
+            Mexico City · MXN ·{" "}
+            <Link className="underline" href="/dashboard">
+              Totals and trends
+            </Link>
+          </p>
         </div>
-        <div className="flex flex-wrap items-start gap-3">
-          <Button
-            size="lg"
-            disabled={!summary || loading || saving}
-            onClick={() => openForm(null)}
-          >
-            Add entry
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            disabled={!summary || loading || saving || exporting}
-            onClick={exportReport}
-          >
-            {exporting ? "Preparing PDF…" : "Export PDF"}
-          </Button>
-          {/* An export belongs to the period actually loaded, and is a fresh
-              export whenever that period changes. */}
-          {summary && (
-            <SheetsExport
-              key={`${summary.kind}:${summary.start}`}
-              summary={summary}
-              disabled={loading || saving || exporting}
-            />
-          )}
-        </div>
+        <Button
+          size="lg"
+          disabled={!summary || loading || saving}
+          onClick={() => openForm(null)}
+        >
+          Add entry
+        </Button>
       </div>
-      <section
-        aria-label="Period navigation"
-        className="flex flex-col gap-3 border-y py-4"
-      >
-        <div className="flex flex-wrap items-end gap-4">
-          <Field className="w-32">
-            <FieldLabel htmlFor="period">Period</FieldLabel>
-            <NativeSelect
-              id="period"
-              value={view.kind}
-              onChange={(event) =>
-                // The anchor date survives a change of period kind.
-                show({
-                  kind: event.target.value as PeriodKind,
-                  date: view.date,
-                })
-              }
-            >
-              {periodKinds.map((option) => (
-                <NativeSelectOption key={option} value={option}>
-                  {periodKindDetails[option].label}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field className="w-48">
-            <FieldLabel htmlFor="anchor">Jump to date</FieldLabel>
-            <Input
-              id="anchor"
-              type="date"
-              value={anchor}
-              onChange={(event) => {
-                if (isCalendarDate(event.target.value))
-                  show({ kind: view.kind, date: event.target.value });
-              }}
-            />
-          </Field>
-          <div className="flex flex-wrap gap-2">
-            {/* With no period known yet there is nothing to step from; the date
-                picker and Back to current period still reach one. */}
-            <Button
-              variant="outline"
-              disabled={!anchor}
-              onClick={() =>
-                show({
-                  kind: view.kind,
-                  date: shiftPeriod(view.kind, anchor, -1),
-                })
-              }
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!anchor}
-              onClick={() =>
-                show({
-                  kind: view.kind,
-                  date: shiftPeriod(view.kind, anchor, 1),
-                })
-              }
-            >
-              Next
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => show({ kind: view.kind, date: null })}
-            >
-              Back to current period
-            </Button>
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {(loaded ?? periodKindDetails[view.kind]).note}
-          {loading && " Loading…"}
-        </p>
-      </section>
+      <PeriodNavigation
+        view={view}
+        anchor={anchor}
+        loading={loading}
+        loaded={loaded}
+        onShow={show}
+      />
       {success && (
         <p role="status" id="entry-status" tabIndex={-1}>
           {success}
         </p>
       )}
-      {exportError && (
-        <Alert variant="destructive">
-          <AlertTitle>Export needs attention</AlertTitle>
-          <AlertDescription>
-            {exportError}
-            <Button
-              variant="outline"
-              disabled={exporting}
-              onClick={exportReport}
-            >
-              {exporting ? "Preparing PDF…" : "Retry export"}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
       {loadError && (
-        <Alert variant="destructive">
-          <AlertTitle>Period unavailable</AlertTitle>
-          <AlertDescription>
-            We could not load {requestedLabel}.{" "}
-            {summary &&
-              `The figures below still describe ${periodLabel(summary.kind, summary)}.`}
-            <Button
-              variant="outline"
-              disabled={loading}
-              onClick={() => show(view)}
-            >
-              {loading ? "Loading…" : "Retry period"}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <PeriodUnavailable
+          requestedLabel={requestedLabel}
+          summary={summary}
+          loading={loading}
+          onRetry={() => show(view)}
+        />
       )}
       {open && summary && (
         <Card>
@@ -668,191 +459,128 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         </Card>
       )}
       {summary && (
-        <>
-          <section
-            aria-label="Period totals"
-            className="grid gap-4 md:grid-cols-3"
-          >
-            {[
-              ["Total income", money(summary.income)],
-              ["Total expenses", money(summary.expenses)],
-              ["Net change", signedMoney(summary.netChange)],
-            ].map(([label, amount]) => (
-              <Card key={label}>
-                <CardHeader>
-                  <CardDescription>{label}</CardDescription>
-                  <CardTitle>
-                    <span className="break-all text-2xl tabular-nums">
-                      {amount}
-                    </span>
-                  </CardTitle>
-                  {label === "Net change" && (
-                    <CardDescription>
-                      Recorded activity for this period
-                    </CardDescription>
-                  )}
-                </CardHeader>
-              </Card>
-            ))}
-          </section>
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <h2>Spending by category</h2>
-              </CardTitle>
-              <CardDescription>
-                Expenses minus refunds recorded in this period.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {summary.breakdown.length ? (
-                <ul className="flex flex-col gap-4">
-                  {summary.breakdown.map((group) => (
-                    <li
-                      key={group.categoryId ?? "uncategorized"}
-                      className="flex flex-wrap justify-between gap-2"
-                    >
-                      <span className="break-words">{group.category}</span>
-                      <span className="tabular-nums">
-                        {money(group.amount)}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>Entries</h2>
+            </CardTitle>
+            <CardDescription>Latest movement date first.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {summary.entries.length ? (
+              <ul className="divide-y">
+                {summary.entries.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex flex-col gap-2 py-4 first:pt-0"
+                  >
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <span className="font-medium">
+                        {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
+                        {entry.category}
                       </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-muted-foreground">
-                  No expenses or refunds in this period.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <h2>Entries</h2>
-              </CardTitle>
-              <CardDescription>Latest movement date first.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {summary.entries.length ? (
-                <ul className="divide-y">
-                  {summary.entries.map((entry) => (
-                    <li
-                      key={entry.id}
-                      className="flex flex-col gap-2 py-4 first:pt-0"
+                      <span className="font-medium tabular-nums">
+                        {money(signedAmount(entry))}
+                      </span>
+                    </div>
+                    <time
+                      className="text-sm text-muted-foreground"
+                      dateTime={entry.date}
                     >
-                      <div className="flex flex-wrap justify-between gap-2">
-                        <span className="font-medium">
-                          {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
-                          {entry.category}
-                        </span>
-                        <span className="font-medium tabular-nums">
-                          {money(signedAmount(entry))}
-                        </span>
-                      </div>
-                      <time
-                        className="text-sm text-muted-foreground"
-                        dateTime={entry.date}
+                      {entry.date}
+                    </time>
+                    {entry.note && (
+                      <p className="whitespace-pre-wrap break-words text-sm">
+                        {entry.note}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-label={`Edit ${entryTitle(entry)}`}
+                        disabled={loading || saving || deletingId !== ""}
+                        onClick={() => openForm(entry)}
                       >
-                        {entry.date}
-                      </time>
-                      {entry.note && (
-                        <p className="whitespace-pre-wrap break-words text-sm">
-                          {entry.note}
-                        </p>
-                      )}
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          aria-label={`Edit ${entryTitle(entry)}`}
-                          disabled={loading || saving || deletingId !== ""}
-                          onClick={() => openForm(entry)}
-                        >
-                          Edit
-                        </Button>
-                        <AlertDialog
-                          open={removing?.id === entry.id}
-                          onOpenChange={(next) => {
-                            if (deletingId) return;
-                            setRemoving(next ? entry : null);
-                            setRemoveError("");
-                          }}
-                        >
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              aria-label={`Delete ${entryTitle(entry)}`}
-                              disabled={loading || saving || deletingId !== ""}
+                        Edit
+                      </Button>
+                      <AlertDialog
+                        open={removing?.id === entry.id}
+                        onOpenChange={(next) => {
+                          if (deletingId) return;
+                          setRemoving(next ? entry : null);
+                          setRemoveError("");
+                        }}
+                      >
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-label={`Delete ${entryTitle(entry)}`}
+                            disabled={loading || saving || deletingId !== ""}
+                          >
+                            Delete
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              Delete this entry permanently?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {entryTitle(entry)}
+                              {entry.categoryId
+                                ? `, in ${entry.category}.`
+                                : ", uncategorized."}{" "}
+                              It leaves your journal and every day, week, and
+                              month total that includes it. This cannot be
+                              undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          {removeError && (
+                            <Alert variant="destructive">
+                              <AlertTitle>Deletion needs attention</AlertTitle>
+                              <AlertDescription>{removeError}</AlertDescription>
+                            </Alert>
+                          )}
+                          <AlertDialogFooter>
+                            <AlertDialogCancel disabled={deletingId !== ""}>
+                              Keep entry
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-destructive text-white hover:bg-destructive/90"
+                              disabled={deletingId !== ""}
+                              onClick={(event) => {
+                                // The dialog closes only once the deletion is
+                                // confirmed by the server.
+                                event.preventDefault();
+                                remove(entry);
+                              }}
                             >
-                              Delete
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                Delete this entry permanently?
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                {entryTitle(entry)}
-                                {entry.categoryId
-                                  ? `, in ${entry.category}.`
-                                  : ", uncategorized."}{" "}
-                                It leaves your journal and every day, week, and
-                                month total that includes it. This cannot be
-                                undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            {removeError && (
-                              <Alert variant="destructive">
-                                <AlertTitle>
-                                  Deletion needs attention
-                                </AlertTitle>
-                                <AlertDescription>
-                                  {removeError}
-                                </AlertDescription>
-                              </Alert>
-                            )}
-                            <AlertDialogFooter>
-                              <AlertDialogCancel disabled={deletingId !== ""}>
-                                Keep entry
-                              </AlertDialogCancel>
-                              <AlertDialogAction
-                                className="bg-destructive text-white hover:bg-destructive/90"
-                                disabled={deletingId !== ""}
-                                onClick={(event) => {
-                                  // The dialog closes only once the deletion is
-                                  // confirmed by the server.
-                                  event.preventDefault();
-                                  remove(entry);
-                                }}
-                              >
-                                {deletingId === entry.id
-                                  ? "Deleting…"
-                                  : "Delete permanently"}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyTitle>No entries in this period</EmptyTitle>
-                    <EmptyDescription>
-                      Add income, an expense, or a refund, or browse another
-                      day, week, or month.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
-            </CardContent>
-          </Card>
-        </>
+                              {deletingId === entry.id
+                                ? "Deleting…"
+                                : "Delete permanently"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>No entries in this period</EmptyTitle>
+                  <EmptyDescription>
+                    Add income, an expense, or a refund, or browse another day,
+                    week, or month.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </CardContent>
+        </Card>
       )}
     </main>
   );

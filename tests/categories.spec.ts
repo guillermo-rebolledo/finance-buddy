@@ -82,7 +82,7 @@ test("custom categories are created per list and become available to matching en
   });
   // A newly created category is offered to compatible entries on the next load
   // of the form, with no other refresh needed.
-  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("link", { name: "Entries", exact: true }).click();
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await page.getByLabel("Type", { exact: true }).selectOption("income");
   expect(
@@ -227,7 +227,7 @@ test("renaming keeps category identity across entries and summaries", async ({
   expect(summary.breakdown).toEqual([
     { categoryId: groceries.id, category: "Supermarket", amount: "120.00" },
   ]);
-  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("link", { name: "Entries", exact: true }).click();
   await expect(
     page.getByText("Expense · Supermarket", { exact: true }),
   ).toBeVisible();
@@ -275,7 +275,7 @@ test("archiving preserves history and restoring reuses the same category", async
   ]);
   expect((await post(page, { categoryId: dining.id })).status()).toBe(400);
   // The entry form on the overview offers exactly the active categories.
-  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("link", { name: "Entries", exact: true }).click();
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await page.getByLabel("Type", { exact: true }).selectOption("expense");
   expect(
@@ -296,7 +296,7 @@ test("archiving preserves history and restoring reuses the same category", async
   expect(
     restored.expense.find((c: { id: string }) => c.id === dining.id).active,
   ).toBe(true);
-  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("link", { name: "Entries", exact: true }).click();
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await page.getByLabel("Type", { exact: true }).selectOption("expense");
   expect(

@@ -69,8 +69,12 @@ test("income and expenses persist in a coherent exact weekly report", async ({
   expect(report.breakdown).toEqual([
     { categoryId: null, category: "Uncategorized", amount: "1500.00" },
   ]);
-  await page.reload();
-  await expect(page.getByText("+MXN 8,500.00", { exact: true })).toBeVisible();
+  await page.goto("/dashboard");
+  await expect(
+    page
+      .getByRole("region", { name: "Period totals" })
+      .getByText("+MXN 8,500.00", { exact: true }),
+  ).toBeVisible();
 });
 
 test("phone and desktop save optional fields, preserve invalid input, and recover a lost response once", async ({
@@ -376,6 +380,7 @@ test("refunds reduce expenses and totals without counting as income", async ({
     "800.00",
     "9200.00",
   ]);
+  await page.goto("/dashboard");
   const totals = page.getByRole("region", { name: "Period totals" });
   await expect(
     totals.getByText("MXN 10,000.00", { exact: true }),
@@ -384,6 +389,7 @@ test("refunds reduce expenses and totals without counting as income", async ({
   await expect(
     totals.getByText("+MXN 9,200.00", { exact: true }),
   ).toBeVisible();
+  await page.goto("/");
   await expect(
     page.getByText("Refund · Groceries", { exact: true }),
   ).toBeVisible();
@@ -413,14 +419,15 @@ test("refunds reduce expenses and totals without counting as income", async ({
       .toString(),
   ).toBe(centavos(mixed.expenses).toString());
   await page.reload();
-  // The uncategorized group and the entry itself both present the reduction.
+  // On the registry the reduction is presented once, by the entry itself; its
+  // reporting group presents the same reduction on the dashboard.
   await expect(
     page
       .getByRole("listitem")
       .filter({ hasText: "Refund · Uncategorized" })
       .getByText("-MXN 100.00", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("-MXN 100.00", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("-MXN 100.00", { exact: true })).toHaveCount(1);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -461,11 +468,12 @@ test("a standalone refund reduces only its own receipt period and keeps expense 
   expect(later.breakdown).toEqual([
     { categoryId: null, category: "Uncategorized", amount: "-250.00" },
   ]);
-  await page.reload();
+  await page.goto("/dashboard");
   const totals = page.getByRole("region", { name: "Period totals" });
   await expect(totals.getByText("-MXN 250.00", { exact: true })).toBeVisible();
   await expect(totals.getByText("+MXN 250.00", { exact: true })).toBeVisible();
   await expect(totals.getByText("MXN 0.00", { exact: true })).toBeVisible();
+  await page.goto("/");
   // Income categories and archived expense categories stay unavailable to refunds.
   const income = await post(page, {
     kind: "refund",
