@@ -52,14 +52,14 @@ export function SheetsExport({
     setDone(null);
     if (!attempt.current) attempt.current = crypto.randomUUID();
     try {
-      const response = await fetch("/api/export", {
+      const query = new URLSearchParams({
+        kind: summary.kind,
+        date: summary.date,
+      });
+      const response = await fetch(`/api/journal/spreadsheet?${query}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: attempt.current,
-          kind: summary.kind,
-          date: summary.date,
-        }),
+        body: JSON.stringify({ id: attempt.current }),
       });
       const result = await response.json();
       if (!response.ok) {

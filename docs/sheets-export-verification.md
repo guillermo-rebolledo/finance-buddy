@@ -3,7 +3,7 @@
 Verified locally September 11, 2026 with Node 24, pnpm 10.29.2, a production Next.js build, controlled Google responses, and disposable PostgreSQL 17.9 Alpine. Migration `0005_spreadsheet_exports.sql` adds the record of exports; no existing table changed.
 
 - Typechecking, ESLint, and the production build passed without production credentials.
-- Full application suite: 100 cases passed, covering 50 scenarios on desktop Chromium and an iPhone 13 viewport.
+- Full application suite: 118 cases passed, covering 59 scenarios on desktop Chromium and an iPhone 13 viewport, after merging the PDF export work from issue #8.
 - **Export action.** The overview carries Export to Google Sheets beside Add entry on both viewports, and exports the period whose totals are on screen. The control is disabled while an export is pending, so a second submission cannot start.
 - **Separate authorization.** Signing in never asks for file access. The first export offers Connect Google Sheets export, which asks Google for `drive.file` only, offline, with consent, and with the sign-in scopes preserved. Declining leaves the session, the journal, and category management working, and the connection is offered again on the next export.
 - **Snapshot contents.** The spreadsheet holds a Summary tab (period label, covered start and end dates, Mexico City generation date, currency, total income, total expenses, net change, entry count), a Categories tab equal to the on-screen breakdown, and an Entries tab with every movement. Income, expenses, and refunds all appear, a refund reads as a negative amount, Uncategorized and archived categories are reported under their own names, and notes are included.
@@ -43,6 +43,14 @@ Three findings resolved, one accepted as recorded.
 - Accepted: an unavailable workspace surfaces as a reconnect prompt. Every export request proves a live database-backed session first, so a database outage is refused with 503 before export authorization is consulted.
 
 Standards: 6 findings resolved, no outstanding hard violations. Spec: 3 findings resolved, no outstanding implementation findings; the live Google check remains blocked as recorded below.
+
+## Merge with PDF export
+
+`main` gained the PDF export of issue #8 while this work was in progress. Both exports now sit side by side.
+
+- The overview carries Add entry, Export PDF, and Export to Google Sheets in one wrapping row, and the Sheets control is disabled while a PDF is being prepared.
+- The Sheets endpoint moved to `POST /api/journal/spreadsheet?kind=&date=` and names its period through the shared `requestedPeriod` resolution introduced by #8, so the report, the PDF, and the spreadsheet can only ever cover a period the overview itself can show. The export identifier stays in the request body.
+- The two application-boundary suites are separate files, `tests/export.spec.ts` for PDF and `tests/sheets-export.spec.ts` for Sheets, and their helpers share one module.
 
 ## Deployment
 

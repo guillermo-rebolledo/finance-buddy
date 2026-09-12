@@ -1,7 +1,11 @@
-import { authorizeOwner, jsonError, privateHeaders } from "@/lib/access";
+import {
+  authorizeOwner,
+  jsonError,
+  privateHeaders,
+  requestedPeriod,
+} from "@/lib/access";
 import {
   mexicoToday,
-  parseSummaryRequest,
   validateEntry,
   validateEntryTarget,
   type EntryError,
@@ -13,16 +17,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const access = await authorizeOwner(request, false);
   if ("denied" in access) return access.denied;
+  const requested = requestedPeriod(request);
+  if ("denied" in requested) return requested.denied;
   try {
-    const url = new URL(request.url);
-    const period = parseSummaryRequest(
-      url.searchParams.get("kind"),
-      url.searchParams.get("date"),
-      mexicoToday(),
-    );
-    if (!period)
-      return jsonError("Choose a day, week, or month with a valid date.", 400);
-    return Response.json(await summarize(access.owner, period), {
+    return Response.json(await summarize(access.owner, requested.period), {
       headers: privateHeaders,
     });
   } catch {
