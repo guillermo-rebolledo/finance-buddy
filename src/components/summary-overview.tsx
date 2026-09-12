@@ -53,6 +53,7 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { SheetsExport } from "@/components/sheets-export";
 
 const exportFailed =
   "The PDF could not be created, and your journal is unchanged. Retry the export.";
@@ -355,7 +356,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           </p>
           <p className="text-sm text-muted-foreground">Mexico City · MXN</p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           <Button
             size="lg"
             disabled={!summary || loading || saving}
@@ -371,6 +372,15 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           >
             {exporting ? "Preparing PDF…" : "Export PDF"}
           </Button>
+          {/* An export belongs to the period actually loaded, and is a fresh
+              export whenever that period changes. */}
+          {summary && (
+            <SheetsExport
+              key={`${summary.kind}:${summary.start}`}
+              summary={summary}
+              disabled={loading || saving || exporting}
+            />
+          )}
         </div>
       </div>
       <section

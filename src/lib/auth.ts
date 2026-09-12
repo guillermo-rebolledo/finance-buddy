@@ -2,6 +2,7 @@ import "server-only";
 import { betterAuth } from "better-auth";
 import { Pool } from "pg";
 import { getConfig } from "./config";
+import { sheetsScope } from "./financial";
 
 function isVerifiedOwner(
   user: { email?: string; emailVerified?: boolean },
@@ -46,7 +47,16 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
         }
       },
     },
-    account: { accountLinking: { enabled: false } },
+    // Linking exists for one purpose: the same Google identity granting the
+    // extra file access an export needs. Different emails stay refused, so the
+    // only account that can ever be linked is the owner's own.
+    account: {
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ["google"],
+        allowDifferentEmails: false,
+      },
+    },
     session: { expiresIn: 60 * 60 * 24 * 7, cookieCache: { enabled: false } },
     onAPIError: { errorURL: `${config.origin}/login`, throw: false },
     logger: { disabled: true },
@@ -57,6 +67,34 @@ export function getAuth() {
   const config = getConfig();
   if (!config) return null;
   return (instance ??= createAuth(config));
+}
+
+// Export authorization is separate from sign-in: the session stays valid whether
+// or not this scope was ever granted, and a refusal here only blocks exporting.
+// The token is minted for this request and never leaves the server.
+export async function exportAccess(headers: Headers) {
+  const auth = getAuth();
+  if (!auth) return { status: "unavailable" } as const;
+  try {
+    const accounts = await auth.api.listUserAccounts({ headers });
+    const account = accounts.find(
+      (candidate) =>
+        candidate.providerId === "google" &&
+        candidate.scopes.includes(sheetsScope),
+    );
+    if (!account) return { status: "unauthorized" } as const;
+    const token = await auth.api.getAccessToken({
+      headers,
+      body: { accountId: account.id },
+    });
+    // A refused refresh, a revoked grant and a dropped scope all read the same
+    // way to the owner: reconnect before exporting again.
+    if (!token.accessToken || !token.scopes?.includes(sheetsScope))
+      return { status: "unauthorized" } as const;
+    return { status: "authorized", accessToken: token.accessToken } as const;
+  } catch {
+    return { status: "unauthorized" } as const;
+  }
 }
 
 export async function getAccess(headers: Headers) {

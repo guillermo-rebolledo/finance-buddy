@@ -14,6 +14,9 @@ async function handle(request: Request) {
   if (
     ![
       "/sign-in/social",
+      // Export authorization: the same Google identity granting the extra file
+      // access, asked for separately from sign-in.
+      "/link-social",
       "/callback/google",
       "/get-session",
       "/sign-out",
