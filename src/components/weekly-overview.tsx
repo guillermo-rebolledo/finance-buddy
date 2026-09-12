@@ -1,7 +1,12 @@
 "use client";
 import { useRef, useState } from "react";
 import {
+  entryKindDetail,
+  entryKinds,
+  entryKindDetails,
   money,
+  signedAmount,
+  signedMoney,
   validateEntry,
   type EntryInput,
   type WeeklyReport,
@@ -194,8 +199,8 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
               <h2>Add entry</h2>
             </CardTitle>
             <CardDescription>
-              Record income or a purchase, including card purchases, on its
-              movement date.
+              Record income, a purchase including card purchases, or a refund on
+              the date the money moved.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -220,13 +225,18 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                       <NativeSelectOption value="">
                         Choose a type
                       </NativeSelectOption>
-                      <NativeSelectOption value="income">
-                        Income
-                      </NativeSelectOption>
-                      <NativeSelectOption value="expense">
-                        Expense
-                      </NativeSelectOption>
+                      {entryKinds.map((available) => (
+                        <NativeSelectOption key={available} value={available}>
+                          {entryKindDetails[available].label}
+                        </NativeSelectOption>
+                      ))}
                     </NativeSelect>
+                    {kind === "refund" && (
+                      <p className="text-sm text-muted-foreground">
+                        Enter the refunded amount as a positive number. It
+                        reduces expenses on its receipt date.
+                      </p>
+                    )}
                   </Field>
                   <Field data-invalid={invalidField === "amount"}>
                     <FieldLabel htmlFor="amount">Amount (MXN)</FieldLabel>
@@ -268,7 +278,11 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                         Uncategorized
                       </NativeSelectOption>
                       {report.categories
-                        .filter((category) => category.kind === kind)
+                        .filter(
+                          (category) =>
+                            category.kind ===
+                            entryKindDetail(kind)?.categoryKind,
+                        )
                         .map((category) => (
                           <NativeSelectOption
                             key={category.id}
@@ -278,6 +292,13 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                           </NativeSelectOption>
                         ))}
                     </NativeSelect>
+                    {kind === "refund" && (
+                      <p className="text-sm text-muted-foreground">
+                        Refunds use your active expense categories. An archived
+                        category stays archived; leave the refund uncategorized
+                        instead.
+                      </p>
+                    )}
                   </Field>
                   <Field data-invalid={invalidField === "note"}>
                     <FieldLabel htmlFor="note">Note (optional)</FieldLabel>
@@ -329,16 +350,16 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
             className="grid gap-4 md:grid-cols-3"
           >
             {[
-              ["Total income", report.income],
-              ["Total expenses", report.expenses],
-              ["Net change", report.netChange],
+              ["Total income", money(report.income)],
+              ["Total expenses", money(report.expenses)],
+              ["Net change", signedMoney(report.netChange)],
             ].map(([label, amount]) => (
               <Card key={label}>
                 <CardHeader>
                   <CardDescription>{label}</CardDescription>
                   <CardTitle>
                     <span className="break-all text-2xl tabular-nums">
-                      {money(amount)}
+                      {amount}
                     </span>
                   </CardTitle>
                   {label === "Net change" && (
@@ -356,7 +377,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                 <h2>Spending by category</h2>
               </CardTitle>
               <CardDescription>
-                All expenses recorded in this period.
+                Expenses minus refunds recorded in this period.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -375,7 +396,9 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                   ))}
                 </ul>
               ) : (
-                <p className="text-muted-foreground">No expenses this week.</p>
+                <p className="text-muted-foreground">
+                  No expenses or refunds this week.
+                </p>
               )}
             </CardContent>
           </Card>
@@ -396,11 +419,11 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                     >
                       <div className="flex flex-wrap justify-between gap-2">
                         <span className="font-medium">
-                          {entry.kind === "income" ? "Income" : "Expense"} ·{" "}
+                          {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
                           {entry.category}
                         </span>
                         <span className="font-medium tabular-nums">
-                          {money(entry.amount)}
+                          {money(signedAmount(entry))}
                         </span>
                       </div>
                       <time
@@ -422,7 +445,8 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                   <EmptyHeader>
                     <EmptyTitle>No entries this week</EmptyTitle>
                     <EmptyDescription>
-                      Add income or an expense to start your weekly overview.
+                      Add income, an expense, or a refund to start your weekly
+                      overview.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

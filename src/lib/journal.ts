@@ -5,8 +5,10 @@ import { getConfig } from "./config";
 import {
   centavos,
   decimal,
+  entryKindDetails,
   mexicoToday,
   weekContaining,
+  type EntryKind,
   type Category,
   type EntryError,
   type EntryInput,
@@ -89,15 +91,18 @@ export async function weeklyReport(owner: string): Promise<WeeklyReport> {
       row: EntryInput & { centavos: string; category: string; currency: "MXN" },
     ) => {
       const value = BigInt(row.centavos);
-      if (row.kind === "income") income += value;
+      // A refund reduces expenses and its category group on its own movement date.
+      const kind = entryKindDetails[row.kind as EntryKind];
+      const effect = value * kind.sign;
+      if (kind.total === "income") income += effect;
       else {
-        expenses += value;
+        expenses += effect;
         const group = groups.get(row.categoryId) ?? {
           categoryId: row.categoryId,
           category: row.category,
           value: 0n,
         };
-        group.value += value;
+        group.value += effect;
         groups.set(row.categoryId, group);
       }
       return {
@@ -166,13 +171,20 @@ export async function saveEntry(
     if (entry.categoryId) {
       const category = await client.query(
         "SELECT 1 FROM category WHERE owner_id=$1 AND id=$2 AND kind=$3 AND active FOR SHARE",
-        [owner, entry.categoryId, entry.kind],
+        [
+          owner,
+          entry.categoryId,
+          entryKindDetails[entry.kind as EntryKind].categoryKind,
+        ],
       );
       if (!category.rowCount) {
         await client.query("ROLLBACK");
         return {
           field: "categoryId",
-          message: "Choose an active category for this entry type.",
+          message:
+            entry.kind === "refund"
+              ? "Choose an active expense category for this refund, or leave it uncategorized."
+              : "Choose an active category for this entry type.",
         };
       }
     }

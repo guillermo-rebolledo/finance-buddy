@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { signIn } from "./helpers";
+import { centavos } from "../src/lib/financial";
 import { Pool } from "pg";
 import { writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -73,7 +74,7 @@ test("income and expenses persist in a coherent exact weekly report", async ({
     { categoryId: null, category: "Uncategorized", amount: "1500.00" },
   ]);
   await page.reload();
-  await expect(page.getByText("MXN 8,500.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("+MXN 8,500.00", { exact: true })).toBeVisible();
 });
 
 test("phone and desktop save optional fields, preserve invalid input, and recover a lost response once", async ({
@@ -182,7 +183,7 @@ test("server rejects invalid amounts, dates, types and categories without changi
     null,
   ])
     expect((await post(page, { date })).status()).toBe(400);
-  for (const kind of ["refund", "transfer", "", null])
+  for (const kind of ["transfer", "reimbursement", "", null])
     expect((await post(page, { kind })).status()).toBe(400);
   expect((await post(page, { note: "x".repeat(2001) })).status()).toBe(400);
   const salary = initial.categories.find(
@@ -265,6 +266,15 @@ test("starter categories seed once and foreign or archived assignments cannot le
       await post(page, { categoryId: foreignCategory, ownerId: foreignOwner })
     ).status(),
   ).toBe(400);
+  expect(
+    (
+      await post(page, {
+        kind: "refund",
+        categoryId: foreignCategory,
+        ownerId: foreignOwner,
+      })
+    ).status(),
+  ).toBe(400);
   expect((await post(page, { categoryId: groceries.id })).status()).toBe(400);
   const report = await (
     await page.request.get(
@@ -320,6 +330,200 @@ test("movement dates define Monday–Sunday membership and backdated success is 
   const earlier = await (await page.request.get("/api/journal")).json();
   expect(earlier.expenses).toBe("100.00");
   expect(earlier.entries).toHaveLength(1);
+});
+
+test("refunds reduce expenses and totals without counting as income", async ({
+  page,
+}, testInfo) => {
+  const initial = await overview(page);
+  const groceries = initial.categories.find(
+    (category: { name: string }) => category.name === "Groceries",
+  );
+  expect((await post(page, { kind: "income", amount: "10000" })).status()).toBe(
+    200,
+  );
+  expect(
+    (
+      await post(page, {
+        kind: "expense",
+        amount: "1000",
+        categoryId: groceries.id,
+      })
+    ).status(),
+  ).toBe(200);
+  await page.getByRole("button", { name: "Add entry", exact: true }).click();
+  await page.getByLabel("Type", { exact: true }).selectOption("refund");
+  expect(
+    await page
+      .getByLabel("Category (optional)")
+      .locator("option")
+      .allTextContents(),
+  ).toEqual([
+    "Uncategorized",
+    "Dining",
+    "Entertainment",
+    "Groceries",
+    "Health",
+    "Housing",
+    "Shopping",
+    "Transport",
+    "Utilities",
+  ]);
+  await page
+    .getByLabel("Category (optional)")
+    .selectOption({ label: "Groceries" });
+  await page.getByLabel("Amount (MXN)").fill("200");
+  await page.getByRole("button", { name: "Save entry", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Entry saved.");
+  const report = await (await page.request.get("/api/journal")).json();
+  expect([report.income, report.expenses, report.netChange]).toEqual([
+    "10000.00",
+    "800.00",
+    "9200.00",
+  ]);
+  const totals = page.getByRole("region", { name: "Weekly totals" });
+  await expect(
+    totals.getByText("MXN 10,000.00", { exact: true }),
+  ).toBeVisible();
+  await expect(totals.getByText("MXN 800.00", { exact: true })).toBeVisible();
+  await expect(
+    totals.getByText("+MXN 9,200.00", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Refund · Groceries", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("-MXN 200.00", { exact: true })).toBeVisible();
+  // An uncategorized refund reduces its own reporting group.
+  expect((await post(page, { kind: "refund", amount: "100" })).status()).toBe(
+    200,
+  );
+  const mixed = await (await page.request.get("/api/journal")).json();
+  expect(mixed.expenses).toBe("700.00");
+  expect(
+    [...mixed.breakdown].sort(
+      (a: { category: string }, b: { category: string }) =>
+        a.category < b.category ? -1 : 1,
+    ),
+  ).toEqual([
+    { categoryId: groceries.id, category: "Groceries", amount: "800.00" },
+    { categoryId: null, category: "Uncategorized", amount: "-100.00" },
+  ]);
+  expect(
+    mixed.breakdown
+      .reduce(
+        (total: bigint, group: { amount: string }) =>
+          total + centavos(group.amount),
+        0n,
+      )
+      .toString(),
+  ).toBe(centavos(mixed.expenses).toString());
+  await page.reload();
+  // The uncategorized group and the entry itself both present the reduction.
+  await expect(
+    page
+      .getByRole("listitem")
+      .filter({ hasText: "Refund · Uncategorized" })
+      .getByText("-MXN 100.00", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("-MXN 100.00", { exact: true })).toHaveCount(2);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("refund-overview.png"),
+    fullPage: true,
+  });
+});
+
+test("a standalone refund reduces only its own receipt period and keeps expense categories active", async ({
+  page,
+}) => {
+  const initial = await overview(page);
+  const salary = initial.categories.find(
+    (category: { name: string }) => category.name === "Salary",
+  );
+  const groceries = initial.categories.find(
+    (category: { name: string }) => category.name === "Groceries",
+  );
+  expect((await post(page, { amount: "500" })).status()).toBe(200);
+  // The refund is received in the following week, with no original purchase recorded.
+  await writeFile(
+    process.env.TEST_CLOCK_FILE!,
+    String(Date.parse("2026-09-09T18:00:00Z") - Date.now()),
+  );
+  expect(
+    (
+      await post(page, { kind: "refund", amount: "250", date: "2026-09-09" })
+    ).status(),
+  ).toBe(200);
+  const later = await (await page.request.get("/api/journal")).json();
+  expect([
+    later.start,
+    later.end,
+    later.income,
+    later.expenses,
+    later.netChange,
+  ]).toEqual(["2026-09-07", "2026-09-13", "0.00", "-250.00", "250.00"]);
+  expect(later.breakdown).toEqual([
+    { categoryId: null, category: "Uncategorized", amount: "-250.00" },
+  ]);
+  await page.reload();
+  const totals = page.getByRole("region", { name: "Weekly totals" });
+  await expect(totals.getByText("-MXN 250.00", { exact: true })).toBeVisible();
+  await expect(totals.getByText("+MXN 250.00", { exact: true })).toBeVisible();
+  await expect(totals.getByText("MXN 0.00", { exact: true })).toBeVisible();
+  // Income categories and archived expense categories stay unavailable to refunds.
+  const income = await post(page, {
+    kind: "refund",
+    amount: "10",
+    date: "2026-09-09",
+    categoryId: salary.id,
+  });
+  expect(income.status()).toBe(400);
+  expect((await income.json()).field).toBe("categoryId");
+  await pool.query("UPDATE category SET active=false WHERE id=$1", [
+    groceries.id,
+  ]);
+  const archived = await post(page, {
+    kind: "refund",
+    amount: "10",
+    date: "2026-09-09",
+    categoryId: groceries.id,
+  });
+  expect(archived.status()).toBe(400);
+  expect(
+    (
+      await pool.query("SELECT active FROM category WHERE id=$1", [
+        groceries.id,
+      ])
+    ).rows[0].active,
+  ).toBe(false);
+  await pool.query("UPDATE category SET active=true WHERE id=$1", [
+    groceries.id,
+  ]);
+  expect(
+    (
+      await post(page, {
+        kind: "refund",
+        amount: "10",
+        date: "2026-09-09",
+        categoryId: groceries.id,
+      })
+    ).status(),
+  ).toBe(200);
+  // The purchase period is untouched by the later refund.
+  await writeFile(
+    process.env.TEST_CLOCK_FILE!,
+    String(Date.parse("2026-09-06T18:00:00Z") - Date.now()),
+  );
+  const purchase = await (await page.request.get("/api/journal")).json();
+  expect([purchase.expenses, purchase.netChange]).toEqual([
+    "500.00",
+    "-500.00",
+  ]);
+  expect(purchase.entries).toHaveLength(1);
 });
 
 test("failed report loads show an error and retry instead of an empty period", async ({

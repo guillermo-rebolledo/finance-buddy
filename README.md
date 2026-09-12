@@ -1,6 +1,6 @@
 # Finance Buddy
 
-A private personal finance journal. The private weekly overview records income and expenses in MXN, with optional categories and notes, exact totals, and Mexico City movement dates.
+A private personal finance journal. The private weekly overview records income, expenses, and refunds in MXN, with optional categories and notes, exact totals, and Mexico City movement dates.
 
 ## Tooling
 
@@ -40,7 +40,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-`pnpm db:migrate` loads `.env.local` if present. An existing process-level `DATABASE_URL` takes precedence, including the disposable database supplied by the test harness. The checked-in SQL initializes Better Auth's schema and the financial journal (migration `0002_journal.sql`). The runner applies pending files in one transaction, takes an advisory lock, and records applied names. Repeated runs skip applied migrations. Do not edit an applied migration; add a numbered SQL file. Builds, previews, and application startup never apply migrations.
+`pnpm db:migrate` loads `.env.local` if present. An existing process-level `DATABASE_URL` takes precedence, including the disposable database supplied by the test harness. The checked-in SQL initializes Better Auth's schema, the financial journal (migration `0002_journal.sql`), and refunds (migration `0003_refunds.sql`). The runner applies pending files in one transaction, takes an advisory lock, and records applied names. Repeated runs skip applied migrations. Do not edit an applied migration; add a numbered SQL file. Builds, previews, and application startup never apply migrations.
 
 For a production-like local run:
 
@@ -81,15 +81,15 @@ pnpm test
 1. Link the `finance-buddy` Vercel project and select Next.js with Node 24.x. The committed pnpm version/lockfile select installation; build command is `pnpm build`.
 2. Provision Neon and configure the six environment variables for the target environment. Preview deployments should use a separate Neon branch/database, secret, and stable preview origin with its own registered Google callback.
 3. Apply migrations explicitly to that environment's database, using its direct Neon connection if preferred. Do not add migration commands to the Vercel build or startup scripts.
-4. Deploy. Open `/login`, sign in with the real verified owner, record income and an expense, confirm the weekly figures persist after refresh, then sign out and confirm private requests are refused. Try another Google identity and confirm denial. Check mobile and desktop.
+4. Deploy. Open `/login`, sign in with the real verified owner, record income, an expense, and a refund, confirm the weekly figures persist after refresh, then sign out and confirm private requests are refused. Try another Google identity and confirm denial. Check mobile and desktop.
 5. Record the deployment URL and results in `docs/verification.md`. Controlled Google tests do not establish real OAuth or Neon configuration.
 
 References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installation), [Better Auth Google](https://better-auth.com/docs/authentication/google), [PostgreSQL adapter](https://better-auth.com/docs/adapters/postgresql), [identity admission](https://better-auth.com/docs/concepts/users-accounts), [shadcn/ui](https://ui.shadcn.com/docs/components/radix/button).
 
 ## Financial journal
 
-`GET /api/journal` returns the authenticated owner's current Monday–Sunday report: date-only boundaries, all period entries, active category choices, totals, and spending breakdown. Monetary values are exact decimal strings with explicit MXN currency. PostgreSQL stores positive integer centavos; report arithmetic uses `bigint`. Net change describes recorded activity.
+`GET /api/journal` returns the authenticated owner's current Monday–Sunday report: date-only boundaries, all period entries, active category choices, totals, and spending breakdown. Monetary values are exact decimal strings with explicit MXN currency. PostgreSQL stores positive integer centavos; report arithmetic uses `bigint`. Total expenses are expenses minus refunds received in the period, so totals and category groups can be negative and are never clamped. Income excludes refunds. Net change describes recorded activity.
 
-`POST /api/journal` accepts `{ id, kind, amount, date, categoryId, note }`. Use a stable UUID for retries, `income` or `expense`, a positive decimal string (up to 12 whole digits and two decimal places), an ISO movement date, a nullable category UUID, and a note of at most 2,000 characters. Ownership comes only from the trusted session. Requests require JSON and the configured Origin. Repeating the same ID/payload returns success without inserting another entry; reusing an ID with different values is rejected.
+`POST /api/journal` accepts `{ id, kind, amount, date, categoryId, note }`. Use a stable UUID for retries, `income`, `expense`, or `refund`, a positive decimal string (up to 12 whole digits and two decimal places), an ISO movement date, a nullable category UUID, and a note of at most 2,000 characters. Refunds are entered as positive amounts on their receipt date and accept the owner's active expense categories; an archived category must be restored through category management before a new entry can use it. Ownership comes only from the trusted session. Requests require JSON and the configured Origin. Repeating the same ID/payload returns success without inserting another entry; reusing an ID with different values is rejected.
 
-Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Category management, refunds, corrections, historical navigation, and exports remain separate issues. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals.
+Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Category management, corrections, historical navigation, and exports remain separate issues. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals.
