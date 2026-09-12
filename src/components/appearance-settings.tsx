@@ -6,6 +6,7 @@ import {
   type ColorScheme,
   type SchemeMode,
 } from "@/lib/appearance";
+import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import { themeModes } from "@/components/mode-toggle";
 import { useColorScheme, useHydrated } from "@/components/theme-provider";
@@ -96,16 +97,13 @@ export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const hydrated = useHydrated();
   return (
-    <main className="flex flex-col gap-8 pb-16 pt-8 md:pt-14">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-          Settings
-        </h1>
-        <p className="text-muted-foreground">
+    <main className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10">
+      <PageHeader title="Settings">
+        <p className="max-w-2xl">
           Preferences for this browser. They are saved on this device and never
           change your journal.
         </p>
-      </div>
+      </PageHeader>
       <section aria-label="Appearance">
         <Card>
           <CardHeader>

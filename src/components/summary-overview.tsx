@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
   entryKindDetail,
   entryKinds,
@@ -14,6 +15,7 @@ import {
   type Summary,
 } from "@/lib/financial";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
 import {
   Card,
   CardHeader,
@@ -258,31 +260,35 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   return (
     <main
       aria-busy={loading}
-      className="flex flex-col gap-8 pb-16 pt-8 md:pt-14"
+      className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-            {title}
-          </h1>
-          <p className="text-muted-foreground">
-            {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Mexico City · MXN ·{" "}
-            <Link className="underline" href="/dashboard">
-              Totals and trends
-            </Link>
-          </p>
-        </div>
-        <Button
-          size="lg"
-          disabled={!summary || loading || saving}
-          onClick={() => openForm(null)}
-        >
-          Add entry
-        </Button>
-      </div>
+      <PageHeader
+        title={title}
+        actions={
+          <Button
+            size="lg"
+            className="w-full sm:w-auto"
+            disabled={!summary || loading || saving}
+            onClick={() => openForm(null)}
+          >
+            <Plus aria-hidden="true" />
+            Add entry
+          </Button>
+        }
+      >
+        <p className="text-base tabular-nums">
+          {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
+        </p>
+        <p>
+          Mexico City · MXN ·{" "}
+          <Link
+            className="font-medium text-foreground underline underline-offset-4"
+            href="/dashboard"
+          >
+            Totals and trends
+          </Link>
+        </p>
+      </PageHeader>
       <PeriodNavigation
         view={view}
         anchor={anchor}
@@ -490,36 +496,39 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                 {summary.entries.map((entry) => (
                   <li
                     key={entry.id}
-                    className="flex flex-col gap-2 py-4 first:pt-0"
+                    className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0"
                   >
-                    <div className="flex flex-wrap justify-between gap-2">
-                      <span className="font-medium">
-                        {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
-                        {entry.category}
-                      </span>
-                      <span className="font-medium tabular-nums">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <span className="font-medium break-words">
+                          {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
+                          {entry.category}
+                        </span>
+                        <time
+                          className="text-sm text-muted-foreground"
+                          dateTime={entry.date}
+                        >
+                          {entry.date}
+                        </time>
+                      </div>
+                      <span className="shrink-0 font-medium tabular-nums">
                         {money(signedAmount(entry))}
                       </span>
                     </div>
-                    <time
-                      className="text-sm text-muted-foreground"
-                      dateTime={entry.date}
-                    >
-                      {entry.date}
-                    </time>
                     {entry.note && (
-                      <p className="whitespace-pre-wrap break-words text-sm">
+                      <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
                         {entry.note}
                       </p>
                     )}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="-ml-2 flex flex-wrap gap-1">
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         aria-label={`Edit ${entryTitle(entry)}`}
                         disabled={loading || saving || deletingId !== ""}
                         onClick={() => openForm(entry)}
                       >
+                        <Pencil aria-hidden="true" />
                         Edit
                       </Button>
                       <AlertDialog
@@ -532,11 +541,13 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                       >
                         <AlertDialogTrigger asChild>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
+                            className="text-destructive hover:text-destructive"
                             aria-label={`Delete ${entryTitle(entry)}`}
                             disabled={loading || saving || deletingId !== ""}
                           >
+                            <Trash2 aria-hidden="true" />
                             Delete
                           </Button>
                         </AlertDialogTrigger>

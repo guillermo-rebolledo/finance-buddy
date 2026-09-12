@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { FileDown } from "lucide-react";
 import { type Summary } from "@/lib/financial";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -65,13 +66,14 @@ export function ReportExport({
   }
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-start gap-3">
+      <div className="flex flex-wrap items-start gap-2 *:flex-1 sm:justify-end sm:*:flex-none">
         <Button
           variant="outline"
           size="lg"
           disabled={!summary || busy || exporting}
           onClick={exportReport}
         >
+          <FileDown aria-hidden="true" />
           {exporting ? "Preparing PDF…" : "Export PDF"}
         </Button>
         {/* An export belongs to the period actually loaded, and is a fresh

@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import {
   isCalendarDate,
   periodKindDetails,
@@ -126,10 +127,10 @@ export function PeriodNavigation({
   return (
     <section
       aria-label="Period navigation"
-      className="flex flex-col gap-3 border-y py-4"
+      className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-xs sm:p-4"
     >
-      <div className="flex flex-wrap items-end gap-4">
-        <Field className="w-32">
+      <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,20rem)] sm:items-end">
+        <Field>
           <FieldLabel htmlFor="period">Period</FieldLabel>
           <Select
             value={view.kind}
@@ -138,7 +139,7 @@ export function PeriodNavigation({
               onShow({ kind: next as PeriodKind, date: view.date })
             }
           >
-            <SelectTrigger id="period" className="w-full">
+            <SelectTrigger id="period" className="w-full data-[size=default]:h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper">
@@ -150,51 +151,63 @@ export function PeriodNavigation({
             </SelectContent>
           </Select>
         </Field>
-        <Field className="w-48">
+        <Field>
           <FieldLabel htmlFor="anchor">Jump to date</FieldLabel>
-          <Input
-            id="anchor"
-            type="date"
-            value={anchor}
-            onChange={(event) => {
-              if (isCalendarDate(event.target.value))
-                onShow({ kind: view.kind, date: event.target.value });
-            }}
-          />
-        </Field>
-        <div className="flex flex-wrap gap-2">
           {/* With no period known yet there is nothing to step from; the date
               picker and Back to current period still reach one. */}
-          <Button
-            variant="outline"
-            disabled={!anchor}
-            onClick={() =>
-              onShow({ kind: view.kind, date: shiftPeriod(view.kind, anchor, -1) })
-            }
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!anchor}
-            onClick={() =>
-              onShow({ kind: view.kind, date: shiftPeriod(view.kind, anchor, 1) })
-            }
-          >
-            Next
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => onShow({ kind: view.kind, date: null })}
-          >
-            Back to current period
-          </Button>
-        </div>
+          <div className="flex">
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-r-none"
+              disabled={!anchor}
+              onClick={() =>
+                onShow({ kind: view.kind, date: shiftPeriod(view.kind, anchor, -1) })
+              }
+            >
+              <ChevronLeft aria-hidden="true" />
+              <span className="sr-only">Previous</span>
+            </Button>
+            <Input
+              id="anchor"
+              type="date"
+              className="-mx-px min-w-0 flex-1 rounded-none tabular-nums focus-visible:z-10"
+              value={anchor}
+              onChange={(event) => {
+                if (isCalendarDate(event.target.value))
+                  onShow({ kind: view.kind, date: event.target.value });
+              }}
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-l-none"
+              disabled={!anchor}
+              onClick={() =>
+                onShow({ kind: view.kind, date: shiftPeriod(view.kind, anchor, 1) })
+              }
+            >
+              <ChevronRight aria-hidden="true" />
+              <span className="sr-only">Next</span>
+            </Button>
+          </div>
+        </Field>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {(loaded ?? periodKindDetails[view.kind]).note}
-        {loading && " Loading…"}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t pt-3">
+        <p className="text-sm text-muted-foreground">
+          {(loaded ?? periodKindDetails[view.kind]).note}
+          {loading && " Loading…"}
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-mx-2"
+          onClick={() => onShow({ kind: view.kind, date: null })}
+        >
+          <RotateCcw aria-hidden="true" />
+          Back to current period
+        </Button>
+      </div>
     </section>
   );
 }

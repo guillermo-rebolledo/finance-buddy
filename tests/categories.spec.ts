@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { choose, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
+import {
+  choose,
+  goToSection,
+  moveClockTo,
+  optionsOf,
+  resetClock,
+  signIn,
+} from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -19,7 +26,7 @@ async function manage(page: import("@playwright/test").Page) {
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   await moveClockTo("2026-09-07T05:30:00Z");
   await page.reload();
-  await page.getByRole("link", { name: "Categories", exact: true }).click();
+  await goToSection(page, "Categories");
   await expect(
     page.getByRole("heading", { name: "Categories", level: 1 }),
   ).toBeVisible();
@@ -82,7 +89,7 @@ test("custom categories are created per list and become available to matching en
   });
   // A newly created category is offered to compatible entries on the next load
   // of the form, with no other refresh needed.
-  await page.getByRole("link", { name: "Entries", exact: true }).click();
+  await goToSection(page, "Entries");
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await choose(page, "Type", "Income");
   expect(
@@ -221,7 +228,7 @@ test("renaming keeps category identity across entries and summaries", async ({
   expect(summary.breakdown).toEqual([
     { categoryId: groceries.id, category: "Supermarket", amount: "120.00" },
   ]);
-  await page.getByRole("link", { name: "Entries", exact: true }).click();
+  await goToSection(page, "Entries");
   await expect(
     page.getByText("Expense · Supermarket", { exact: true }),
   ).toBeVisible();
@@ -269,13 +276,13 @@ test("archiving preserves history and restoring reuses the same category", async
   ]);
   expect((await post(page, { categoryId: dining.id })).status()).toBe(400);
   // The entry form on the overview offers exactly the active categories.
-  await page.getByRole("link", { name: "Entries", exact: true }).click();
+  await goToSection(page, "Entries");
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await choose(page, "Type", "Expense");
   expect(
     await optionsOf(page, "Category (optional)"),
   ).not.toContain("Dining");
-  await page.getByRole("link", { name: "Categories", exact: true }).click();
+  await goToSection(page, "Categories");
   await page
     .getByRole("button", { name: "Restore Dining", exact: true })
     .click();
@@ -287,13 +294,13 @@ test("archiving preserves history and restoring reuses the same category", async
   expect(
     restored.expense.find((c: { id: string }) => c.id === dining.id).active,
   ).toBe(true);
-  await page.getByRole("link", { name: "Entries", exact: true }).click();
+  await goToSection(page, "Entries");
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await choose(page, "Type", "Expense");
   expect(
     await optionsOf(page, "Category (optional)"),
   ).toContain("Dining");
-  await page.getByRole("link", { name: "Categories", exact: true }).click();
+  await goToSection(page, "Categories");
   expect((await post(page, { categoryId: dining.id })).status()).toBe(200);
   const after = await (await page.request.get("/api/journal")).json();
   expect(after.expenses).toBe("301.00");

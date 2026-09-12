@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { FileSpreadsheet } from "lucide-react";
 import { periodLabel, sheetsScope, type Summary } from "@/lib/financial";
 import { authClient as client } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,7 @@ export function SheetsExport({
         aria-busy={pending}
         onClick={run}
       >
+        <FileSpreadsheet aria-hidden="true" />
         {pending ? "Exporting…" : "Export to Google Sheets"}
       </Button>
       {notice === "connected" && (
