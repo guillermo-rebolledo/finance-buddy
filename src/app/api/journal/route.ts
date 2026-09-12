@@ -1,5 +1,4 @@
-import { getAccess } from "@/lib/auth";
-import { getConfig } from "@/lib/config";
+import { authorizeOwner, jsonError, privateHeaders } from "@/lib/access";
 import {
   mexicoToday,
   parseSummaryRequest,
@@ -7,31 +6,10 @@ import {
 } from "@/lib/financial";
 import { saveEntry, summarize } from "@/lib/journal";
 export const dynamic = "force-dynamic";
-const headers = { "Cache-Control": "private, no-store" };
+
 async function handle(request: Request, write: boolean) {
-  const access = await getAccess(request.headers);
-  if (access.status !== "authorized")
-    return Response.json(
-      { error: "Workspace access required." },
-      {
-        status:
-          access.status === "unavailable"
-            ? 503
-            : access.status === "forbidden"
-              ? 403
-              : 401,
-        headers,
-      },
-    );
-  if (
-    write &&
-    (request.headers.get("origin") !== getConfig()?.origin ||
-      !request.headers.get("content-type")?.startsWith("application/json"))
-  )
-    return Response.json(
-      { error: "Request not allowed." },
-      { status: 403, headers },
-    );
+  const access = await authorizeOwner(request, write);
+  if ("denied" in access) return access.denied;
   try {
     if (!write) {
       const url = new URL(request.url);
@@ -41,34 +19,27 @@ async function handle(request: Request, write: boolean) {
         mexicoToday(),
       );
       if (!period)
-        return Response.json(
-          { error: "Choose a day, week, or month with a valid date." },
-          { status: 400, headers },
+        return jsonError(
+          "Choose a day, week, or month with a valid date.",
+          400,
         );
-      return Response.json(await summarize(access.userId, period), { headers });
+      return Response.json(await summarize(access.owner, period), {
+        headers: privateHeaders,
+      });
     }
     const input = await request.json().catch(() => null);
     const error = validateEntry(input, mexicoToday());
-    if (error)
-      return Response.json(
-        { error: error.message, field: error.field },
-        { status: 400, headers },
-      );
-    const categoryError = await saveEntry(access.userId, input);
+    if (error) return jsonError(error.message, 400, error.field);
+    const categoryError = await saveEntry(access.owner, input);
     if (categoryError)
-      return Response.json(
-        { error: categoryError.message, field: categoryError.field },
-        { status: 400, headers },
-      );
-    return Response.json({ saved: true }, { headers });
+      return jsonError(categoryError.message, 400, categoryError.field);
+    return Response.json({ saved: true }, { headers: privateHeaders });
   } catch {
-    return Response.json(
-      {
-        error: write
-          ? "Save could not be confirmed. Retry this entry safely."
-          : "Could not load this period. Please retry.",
-      },
-      { status: 503, headers },
+    return jsonError(
+      write
+        ? "Save could not be confirmed. Retry this entry safely."
+        : "Could not load this period. Please retry.",
+      503,
     );
   }
 }

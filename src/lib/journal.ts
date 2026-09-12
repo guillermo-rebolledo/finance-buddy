@@ -1,7 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
-import { getConfig } from "./config";
+import { database } from "./database";
 import {
   centavos,
   decimal,
@@ -15,18 +14,9 @@ import {
   type Summary,
   type SummaryRequest,
 } from "./financial";
-let pool: Pool;
-function database() {
-  const config = getConfig();
-  if (!config) throw new Error("Workspace unavailable");
-  return (pool ??= new Pool({
-    connectionString: config.databaseURL,
-    max: 5,
-    connectionTimeoutMillis: 5000,
-    query_timeout: 5000,
-  }));
-}
-async function seedCategories(owner: string) {
+// Starter categories are inserted exactly once per owner, recorded by the seed
+// row, so renamed or archived starters are never reseeded or duplicated.
+export async function seedCategories(owner: string) {
   const client = await database().connect();
   try {
     await client.query("BEGIN");
