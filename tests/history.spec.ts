@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { moveClockTo, resetClock, signIn } from "./helpers";
+import { choose, moveClockTo, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -222,10 +222,9 @@ test("period navigation moves one period at a time and returns to the current on
 }) => {
   await history(page);
   const heading = page.getByRole("heading", { level: 1 });
-  const label = page.getByLabel("Period", { exact: true });
   await expect(heading).toHaveText("This week");
   await expect(page.getByText("2026-08-31 – 2026-09-06")).toBeVisible();
-  await label.selectOption("month");
+  await choose(page, "Period", "Month");
   await expect(heading).toHaveText("This month");
   await expect(page.getByText("2026-09-01 – 2026-09-30")).toBeVisible();
   // Previous steps back exactly one month and shows that month's figures.
@@ -241,16 +240,16 @@ test("period navigation moves one period at a time and returns to the current on
   await expect(heading).toHaveText("February 2024");
   await expect(page.getByText("2024-02-01 – 2024-02-29")).toBeVisible();
   // Changing granularity keeps the anchor date instead of jumping elsewhere.
-  await label.selectOption("week");
+  await choose(page, "Period", "Week");
   await expect(heading).toHaveText("Jan 29, 2024 – Feb 4, 2024");
-  await label.selectOption("day");
+  await choose(page, "Period", "Day");
   await expect(heading).toHaveText("Thursday, February 1, 2024");
   await expect(page.getByText("2024-02-01 – 2024-02-01")).toBeVisible();
   await expect(
     page.getByText("No entries in this period", { exact: true }),
   ).toBeVisible();
   // A week crossing New Year steps back across the year boundary.
-  await label.selectOption("week");
+  await choose(page, "Period", "Week");
   await page.getByLabel("Jump to date").fill("2026-01-01");
   await expect(heading).toHaveText("Dec 29, 2025 – Jan 4, 2026");
   await expect(page.getByText("MXN 100.00", { exact: true })).toBeVisible();
@@ -265,7 +264,7 @@ test("period navigation moves one period at a time and returns to the current on
     .click();
   await expect(heading).toHaveText("This week");
   await expect(page.getByText("2026-08-31 – 2026-09-06")).toBeVisible();
-  await label.selectOption("day");
+  await choose(page, "Period", "Day");
   await expect(heading).toHaveText("Today");
   await expect(page.getByText("2026-09-02 – 2026-09-02")).toBeVisible();
 });
@@ -284,7 +283,7 @@ test("the browser time zone never decides which period is current", async ({
   await page
     .getByRole("button", { name: "Back to current period", exact: true })
     .click();
-  await page.getByLabel("Period", { exact: true }).selectOption("day");
+  await choose(page, "Period", "Day");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Today");
   await expect(page.getByText("2026-09-01 – 2026-09-01")).toBeVisible();
   await expect(page.getByLabel("Jump to date")).toHaveValue("2026-09-01");

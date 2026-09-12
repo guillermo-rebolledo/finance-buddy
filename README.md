@@ -6,7 +6,7 @@ Three signed-in pages share one period selection. The home page is the **entry r
 
 ## Tooling
 
-Use Node **24.20.0** (`.node-version`) and pnpm **10.29.2** (`packageManager`). Runtime dependencies are exact-pinned and `pnpm-lock.yaml` is committed. Next.js 16.3.5, React 19.3.0, Better Auth 1.7.4, Tailwind CSS 4.3.3, and shadcn/ui Radix components are used. The vendored UI components were installed with shadcn CLI 4.21.0. TypeScript 6.0.2 and ESLint 9.39.4 match the current Next ESLint plugin peer ranges.
+Use Node **24.20.0** (`.node-version`) and pnpm **10.29.2** (`packageManager`). Runtime dependencies are exact-pinned and `pnpm-lock.yaml` is committed. Next.js 16.3.5, React 19.3.0, Better Auth 1.7.4, Tailwind CSS 4.3.3, and shadcn/ui Radix components are used. The vendored UI components were installed with shadcn CLI 4.21.0. Light, dark, and system modes use next-themes 0.4.6, and component animations use tw-animate-css 1.4.0. TypeScript 6.0.2 and ESLint 9.39.4 match the current Next ESLint plugin peer ranges.
 
 ```sh
 corepack enable
@@ -144,3 +144,9 @@ Categories are related to financial movements by identity, never by label text, 
 Every entry in the selected period carries Edit and Delete controls, including historical and uncategorized ones. Editing reopens the entry form on its recorded values under the heading **Edit entry** and enforces the same rules as recording it. Deleting opens a confirmation naming the entry's type, amount, movement date and category; keeping the entry changes nothing, and confirming removes it permanently from the journal and from every day, week, and month total that included it.
 
 A correction that is refused keeps the form values on screen, marks the field at fault, and never reports success. A correction or deletion whose response is lost says so and can be retried safely, because both apply the same values again rather than adding anything. Duplicate submission is disabled while either is pending, and the outcome takes focus when the control pressed disappears with its row.
+
+## Appearance
+
+The header's theme menu switches between light, dark, and the device's system setting. **Settings → Appearance** also chooses a color scheme for each mode separately (Sage, Neutral, Ocean, Rose, or Amber). Appearance is a preference of the browser rather than the journal: it is stored in `localStorage` and applied by an inline script before first paint.
+
+Every color is a CSS variable in `src/app/globals.css`, exposed to Tailwind through `@theme inline`. To add a scheme, add a `[data-light-scheme="<id>"]:not(.dark)` block and a `.dark[data-dark-scheme="<id>"]` block overriding the scheme variables, then list the id in `src/lib/appearance.ts`. Chart hues belong to the mode rather than the scheme, so a series keeps its identity whichever scheme is chosen.

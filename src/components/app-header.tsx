@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 import { AuthButton } from "@/components/auth-button";
+import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
 
-// Every signed-in page shares one header, so the registry, the dashboard and the
-// Categories page are always one link apart.
+// Every signed-in page shares one header, so the registry, the dashboard, the
+// Categories page and Settings are always one link apart.
 export function AppHeader() {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b py-6">
@@ -22,8 +23,14 @@ export function AppHeader() {
         <Button asChild variant="ghost">
           <Link href="/categories">Categories</Link>
         </Button>
+        <Button asChild variant="ghost">
+          <Link href="/settings">Settings</Link>
+        </Button>
       </nav>
-      <AuthButton action="signout" />
+      <div className="flex items-start gap-2">
+        <ModeToggle withSettings />
+        <AuthButton action="signout" />
+      </div>
     </header>
   );
 }

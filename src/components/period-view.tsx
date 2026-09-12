@@ -15,9 +15,12 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Field, FieldLabel } from "@/components/ui/field";
 
 // The period the controls ask for. A null date follows Mexico City's current
@@ -128,23 +131,24 @@ export function PeriodNavigation({
       <div className="flex flex-wrap items-end gap-4">
         <Field className="w-32">
           <FieldLabel htmlFor="period">Period</FieldLabel>
-          <NativeSelect
-            id="period"
+          <Select
             value={view.kind}
-            onChange={(event) =>
+            onValueChange={(next) =>
               // The anchor date survives a change of period kind.
-              onShow({
-                kind: event.target.value as PeriodKind,
-                date: view.date,
-              })
+              onShow({ kind: next as PeriodKind, date: view.date })
             }
           >
-            {periodKinds.map((option) => (
-              <NativeSelectOption key={option} value={option}>
-                {periodKindDetails[option].label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+            <SelectTrigger id="period" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              {periodKinds.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {periodKindDetails[option].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
         <Field className="w-48">
           <FieldLabel htmlFor="anchor">Jump to date</FieldLabel>

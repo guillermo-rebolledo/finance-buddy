@@ -13,7 +13,7 @@ import {
   type EntryInput,
   type Summary,
 } from "@/lib/financial";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardHeader,
@@ -42,15 +42,27 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import {
   PeriodNavigation,
   PeriodUnavailable,
   usePeriodView,
 } from "@/components/period-view";
+
+// A list option cannot have an empty value, so leaving an entry uncategorized
+// is its own option and becomes no category when the form is read.
+const uncategorized = "uncategorized";
 
 // The registry is where movements are recorded, corrected and removed: one
 // period's entries as a compact list, and nothing that summarizes them. Totals,
@@ -148,7 +160,10 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       kind,
       amount: String(data.get("amount") ?? ""),
       date: String(data.get("date") ?? ""),
-      categoryId: String(data.get("categoryId") ?? "") || null,
+      categoryId:
+        [uncategorized, ""].includes(String(data.get("categoryId") ?? ""))
+          ? null
+          : String(data.get("categoryId")),
       note: String(data.get("note") ?? ""),
     };
     inFlight.current = true;
@@ -312,28 +327,27 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                 <FieldGroup>
                   <Field data-invalid={invalidField === "kind"}>
                     <FieldLabel htmlFor="kind">Type</FieldLabel>
-                    <NativeSelect
-                      id="kind"
-                      name="kind"
-                      {...fieldProps("kind")}
-                      value={kind}
-                      onChange={(event) => setKind(event.target.value)}
-                      required
-                    >
-                      <NativeSelectOption value="">
-                        Choose a type
-                      </NativeSelectOption>
-                      {entryKinds.map((available) => (
-                        <NativeSelectOption key={available} value={available}>
-                          {entryKindDetails[available].label}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                    <Select name="kind" value={kind} onValueChange={setKind}>
+                      <SelectTrigger
+                        id="kind"
+                        className="w-full"
+                        {...fieldProps("kind")}
+                      >
+                        <SelectValue placeholder="Choose a type" />
+                      </SelectTrigger>
+                      <SelectContent position="popper">
+                        {entryKinds.map((available) => (
+                          <SelectItem key={available} value={available}>
+                            {entryKindDetails[available].label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {kind === "refund" && (
-                      <p className="text-sm text-muted-foreground">
+                      <FieldDescription>
                         Enter the refunded amount as a positive number. It
                         reduces expenses on its receipt date.
-                      </p>
+                      </FieldDescription>
                     )}
                   </Field>
                   <Field data-invalid={invalidField === "amount"}>
@@ -358,57 +372,61 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                       defaultValue={editing?.date ?? summary.today}
                       required
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <FieldDescription>
                       Today or earlier in Mexico City.
-                    </p>
+                    </FieldDescription>
                   </Field>
                   <Field data-invalid={invalidField === "categoryId"}>
                     <FieldLabel htmlFor="categoryId">
                       Category (optional)
                     </FieldLabel>
-                    <NativeSelect
+                    <Select
                       key={kind}
-                      id="categoryId"
                       name="categoryId"
-                      {...fieldProps("categoryId")}
-                      defaultValue={retained?.categoryId ?? ""}
+                      defaultValue={retained?.categoryId ?? uncategorized}
                     >
-                      <NativeSelectOption value="">
-                        Uncategorized
-                      </NativeSelectOption>
-                      {archived && retained && (
-                        <NativeSelectOption value={retained.categoryId!}>
-                          {retained.category} (archived)
-                        </NativeSelectOption>
-                      )}
-                      {summary.categories
-                        .filter(
-                          (category) =>
-                            category.kind ===
-                            entryKindDetail(kind)?.categoryKind,
-                        )
-                        .map((category) => (
-                          <NativeSelectOption
-                            key={category.id}
-                            value={category.id}
-                          >
-                            {category.name}
-                          </NativeSelectOption>
-                        ))}
-                    </NativeSelect>
+                      <SelectTrigger
+                        id="categoryId"
+                        className="w-full"
+                        {...fieldProps("categoryId")}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent position="popper">
+                        <SelectItem value={uncategorized}>
+                          Uncategorized
+                        </SelectItem>
+                        {archived && retained && (
+                          <SelectItem value={retained.categoryId!}>
+                            {retained.category} (archived)
+                          </SelectItem>
+                        )}
+                        {summary.categories
+                          .filter(
+                            (category) =>
+                              category.kind ===
+                              entryKindDetail(kind)?.categoryKind,
+                          )
+                          .map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                              {category.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                     {archived && retained && (
-                      <p className="text-sm text-muted-foreground">
+                      <FieldDescription>
                         {retained.category} is archived. This entry keeps it
                         while you change another field. Replacing it offers your
                         active categories, or no category at all.
-                      </p>
+                      </FieldDescription>
                     )}
                     {kind === "refund" && (
-                      <p className="text-sm text-muted-foreground">
+                      <FieldDescription>
                         Refunds use your active expense categories. An archived
                         category stays archived; leave the refund uncategorized
                         instead.
-                      </p>
+                      </FieldDescription>
                     )}
                   </Field>
                   <Field data-invalid={invalidField === "note"}>
@@ -548,7 +566,9 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                               Keep entry
                             </AlertDialogCancel>
                             <AlertDialogAction
-                              className="bg-destructive text-white hover:bg-destructive/90"
+                              className={buttonVariants({
+                                variant: "destructive",
+                              })}
                               disabled={deletingId !== ""}
                               onClick={(event) => {
                                 // The dialog closes only once the deletion is

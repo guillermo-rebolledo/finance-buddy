@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { moveClockTo, pdfText, resetClock, signIn } from "./helpers";
+import { choose, moveClockTo, pdfText, resetClock, signIn } from "./helpers";
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
@@ -143,7 +143,7 @@ test("a browsed period exports itself rather than the current one", async ({
   await post(page, { amount: "700", date: "2026-07-15" });
   await post(page, { amount: "99", date: "2026-09-06" });
   await page.reload();
-  await page.getByLabel("Period", { exact: true }).selectOption("month");
+  await choose(page, "Period", "Month");
   await page.getByLabel("Jump to date").fill("2026-07-15");
   await expect(page.getByRole("heading", { name: "July 2026" })).toBeVisible();
   const snapshot = await download(page);
@@ -205,7 +205,7 @@ test("a large period spans pages and truncates no record", async ({
         `Movement number ${index}`,
       ],
     );
-  await page.getByLabel("Period", { exact: true }).selectOption("month");
+  await choose(page, "Period", "Month");
   await expect(page.getByRole("heading", { name: "This month" })).toBeVisible();
   const snapshot = await download(page);
   // Kept as a test artifact so the multi-page layout can be looked at.

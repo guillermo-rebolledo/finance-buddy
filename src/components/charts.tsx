@@ -1,6 +1,22 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { compactAmount, money, signedMoney } from "@/lib/financial";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 // Every chart here is drawn from percentages of a shared plot box: one hairline
 // per axis tick, marks that grow from a single baseline, and a readout that
@@ -359,43 +375,55 @@ export function TableView({
   rows: string[][];
 }) {
   return (
-    <details className="mt-6">
-      <summary className="text-sm text-muted-foreground">Table view</summary>
-      <div className="overflow-x-auto">
-        <table className="mt-3 w-full text-sm">
-          <caption className="sr-only">{caption}</caption>
-          <thead>
-            <tr className="border-b text-left">
+    <Collapsible className="mt-6">
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="group -ml-3 text-muted-foreground"
+        >
+          <ChevronRight
+            aria-hidden="true"
+            className="transition-transform group-data-[state=open]:rotate-90"
+          />
+          Table view
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <Table className="mt-3">
+          <TableCaption className="sr-only">{caption}</TableCaption>
+          <TableHeader>
+            <TableRow>
               {headings.map((heading, index) => (
-                <th
+                <TableHead
                   key={heading}
                   scope="col"
-                  className={index ? "py-2 pl-4 text-right" : "py-2"}
+                  className={index ? "text-right" : undefined}
                 >
                   {heading}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {rows.map((row) => (
-              <tr key={row[0]} className="border-b last:border-0">
-                <th scope="row" className="py-2 text-left font-normal">
+              <TableRow key={row[0]}>
+                <TableHead scope="row" className="font-normal">
                   {row[0]}
-                </th>
+                </TableHead>
                 {row.slice(1).map((cell, index) => (
-                  <td
+                  <TableCell
                     key={`${row[0]}-${index}`}
-                    className="py-2 pl-4 text-right tabular-nums"
+                    className="text-right tabular-nums"
                   >
                     {cell}
-                  </td>
+                  </TableCell>
                 ))}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
+          </TableBody>
+        </Table>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
