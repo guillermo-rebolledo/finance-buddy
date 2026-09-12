@@ -8,6 +8,7 @@ if (
   !process.env.TEST_CLOCK_FILE
 )
   throw new Error("Provider fixture requires the disposable test environment");
+import { readFileSync } from "node:fs";
 const agent = new MockAgent();
 agent.disableNetConnect();
 agent.enableNetConnect(/^(127\.0\.0\.1|localhost)(:\d+)?$/);
@@ -58,12 +59,46 @@ const tokens = Object.fromEntries(
     ]),
   ),
 );
+// One control file names how Google answers next: an expired grant, a refused
+// refresh, a revoked permission, exhausted quota, a provider failure, or a
+// request that never gets a reply. Tests write it; the app never reads it.
+import { appendFileSync, writeFileSync } from "node:fs";
+const controlFile = process.env.TEST_CLOCK_FILE + ".google";
+const captureFile = process.env.TEST_CLOCK_FILE + ".sheets";
+function control() {
+  try {
+    return readFileSync(controlFile, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+const exportScopes =
+  "openid email profile https://www.googleapis.com/auth/drive.file";
 agent
   .get("https://oauth2.googleapis.com")
   .intercept({ path: "/token", method: "POST" })
   .reply((options) => {
     const params = new URLSearchParams(String(options.body));
-    const token = tokens[params.get("code")];
+    if (params.get("grant_type") === "refresh_token") {
+      if (
+        control() === "refresh-failed" ||
+        params.get("refresh_token") !== "controlled-refresh"
+      )
+        return { statusCode: 400, data: { error: "invalid_grant" } };
+      return {
+        statusCode: 200,
+        data: {
+          access_token: "refreshed-export-token",
+          token_type: "Bearer",
+          expires_in: control() === "expired" ? 1 : 3600,
+          scope: exportScopes,
+        },
+      };
+    }
+    // The browser fixture appends ".drive" to the code when the authorization
+    // URL asked for file access, so the granted scopes follow the real request.
+    const [identity, grant] = String(params.get("code")).split(".");
+    const token = tokens[identity];
     if (
       !token ||
       !params.get("code_verifier") ||
@@ -71,17 +106,69 @@ agent
         "http://127.0.0.1:3100/api/auth/callback/google"
     )
       return { statusCode: 400, data: { error: "invalid_grant" } };
+    const exporting = grant === "drive";
     return {
       statusCode: 200,
       data: {
-        access_token: "controlled-token",
+        access_token: exporting ? "controlled-export-token" : "controlled-token",
         token_type: "Bearer",
-        expires_in: 3600,
+        // A short-lived export grant lets natural expiry drive a refresh.
+        expires_in: exporting && control() === "expired" ? 1 : 3600,
         id_token: token,
+        scope: exporting ? exportScopes : "openid email profile",
+        ...(exporting ? { refresh_token: "controlled-refresh" } : {}),
       },
     };
   })
   .persist();
+// Google Sheets at the same external boundary: every spreadsheet the app asks
+// for is recorded whole, so tests compare what Google received with what the
+// app reports on screen.
+let spreadsheets = 0;
+agent
+  .get("https://sheets.googleapis.com")
+  .intercept({ path: "/v4/spreadsheets", method: "POST" })
+  .reply((options) => {
+    const authorization =
+      options.headers.authorization ?? options.headers.Authorization;
+    if (!/^Bearer (controlled-export-token|refreshed-export-token)$/.test(authorization))
+      return {
+        statusCode: 401,
+        data: { error: { code: 401, message: "Invalid Credentials" } },
+      };
+    const directive = control();
+    if (directive === "revoked")
+      return {
+        statusCode: 401,
+        data: { error: { code: 401, message: "Invalid Credentials" } },
+      };
+    if (directive === "quota")
+      return {
+        statusCode: 429,
+        data: { error: { code: 429, message: "Quota exceeded" } },
+      };
+    if (directive === "failure")
+      return {
+        statusCode: 500,
+        data: { error: { code: 500, message: "Internal error" } },
+      };
+    // No reply at all: the app cannot know whether a spreadsheet exists.
+    if (directive === "silent") throw new Error("socket hang up");
+    const spreadsheetId = `controlled-spreadsheet-${++spreadsheets}`;
+    appendFileSync(
+      captureFile,
+      JSON.stringify({ spreadsheetId, request: JSON.parse(String(options.body)) }) + "\n",
+    );
+    return {
+      statusCode: 200,
+      data: {
+        spreadsheetId,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+      },
+    };
+  })
+  .persist();
+writeFileSync(captureFile, "");
 agent
   .get("https://www.googleapis.com")
   .intercept({ path: "/oauth2/v3/certs" })
@@ -89,7 +176,6 @@ agent
   .persist();
 
 // Move only the server clock, at the external time boundary, to test natural expiry.
-import { readFileSync } from "node:fs";
 const RealDate = Date;
 function offset() {
   try {

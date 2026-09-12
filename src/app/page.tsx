@@ -7,7 +7,11 @@ import { SummaryOverview } from "@/components/summary-overview";
 import { summarize } from "@/lib/journal";
 import { currentWeek, mexicoToday } from "@/lib/financial";
 export const dynamic = "force-dynamic";
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ sheets?: string }>;
+}) {
   const access = await getAccess(await headers());
   if (access.status === "unavailable") return <WorkspaceUnavailable />;
   if (access.status !== "authorized") redirect("/login");
@@ -19,7 +23,10 @@ export default async function Home() {
   return (
     <div className="mx-auto max-w-5xl px-6">
       <AppHeader />
-      <SummaryOverview initial={summary} />
+      <SummaryOverview
+        initial={summary}
+        sheetsNotice={(await searchParams).sheets}
+      />
     </div>
   );
 }

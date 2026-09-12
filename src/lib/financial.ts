@@ -259,6 +259,10 @@ export function signedMoney(amount: string) {
     ? money(amount)
     : `+${money(amount)}`;
 }
+// Google's per-file scope: the app reaches only the spreadsheets it creates,
+// never the rest of the owner's Drive. The connect control and the server-side
+// token check name the same scope.
+export const sheetsScope = "https://www.googleapis.com/auth/drive.file";
 export const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type EntryError = { field: keyof EntryInput | null; message: string };

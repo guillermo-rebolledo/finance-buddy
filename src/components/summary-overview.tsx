@@ -53,8 +53,15 @@ import {
   NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { SheetsExport } from "@/components/sheets-export";
 
-export function SummaryOverview({ initial }: { initial: Summary | null }) {
+export function SummaryOverview({
+  initial,
+  sheetsNotice,
+}: {
+  initial: Summary | null;
+  sheetsNotice?: string;
+}) {
   const [summary, setSummary] = useState(initial);
   // The period the controls ask for. A null date follows Mexico City's current
   // date, so an open page keeps resolving the current period across midnight
@@ -304,13 +311,25 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           </p>
           <p className="text-sm text-muted-foreground">Mexico City · MXN</p>
         </div>
-        <Button
-          size="lg"
-          disabled={!summary || loading || saving}
-          onClick={() => openForm(null)}
-        >
-          Add entry
-        </Button>
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start">
+          <Button
+            size="lg"
+            disabled={!summary || loading || saving}
+            onClick={() => openForm(null)}
+          >
+            Add entry
+          </Button>
+          {/* An export belongs to the period actually loaded, and is a fresh
+              export whenever that period changes. */}
+          {summary && (
+            <SheetsExport
+              key={`${summary.kind}:${summary.start}`}
+              summary={summary}
+              disabled={loading || saving}
+              notice={sheetsNotice}
+            />
+          )}
+        </div>
       </div>
       <section
         aria-label="Period navigation"

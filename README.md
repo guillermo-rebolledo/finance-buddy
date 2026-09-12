@@ -25,7 +25,7 @@ Configure all six variables; none are `NEXT_PUBLIC_`:
 | `GOOGLE_CLIENT_SECRET` | Matching Google OAuth client secret.                                                                      |
 | `PRIVATE_OWNER_EMAIL`  | The privately supplied owner address. Used only for admission/authorization, never as a record owner key. |
 
-Create a Google OAuth **Web application** client, set the application origin, and register the exact callback `<BETTER_AUTH_URL>/api/auth/callback/google`. Local and deployment callbacks must be registered separately. Add the owner as a consent-screen test user if the Google project is in testing mode. Only basic identity scopes are requested; Sheets authorization is outside this increment.
+Create a Google OAuth **Web application** client, set the application origin, and register the exact callback `<BETTER_AUTH_URL>/api/auth/callback/google`. Local and deployment callbacks must be registered separately. Add the owner as a consent-screen test user if the Google project is in testing mode. Sign-in requests only basic identity scopes. Exporting additionally asks for `https://www.googleapis.com/auth/drive.file`, which reaches only the spreadsheets this app creates; enable the Google Sheets API and the Google Drive API on the same project and list that scope on the consent screen. No further environment variables are needed, and provider tokens stay server-side.
 
 All admitted identities must have a verified Google email matching the configured owner. Better Auth's stable `user.id` is the future record ownership key. Every protected request revalidates the database session and private-launch owner policy. Session cookies are HTTP-only, same-site, secure on HTTPS, and are not used as a cache of authorization. Sessions expire after seven days, subject to Better Auth's rolling refresh, and sign-out deletes the session.
 
@@ -42,7 +42,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-`pnpm db:migrate` loads `.env.local` if present. An existing process-level `DATABASE_URL` takes precedence, including the disposable database supplied by the test harness. The checked-in SQL initializes Better Auth's schema, the financial journal (migration `0002_journal.sql`), refunds (migration `0003_refunds.sql`), and the category naming rules (migration `0004_category_lifecycle.sql`). The runner applies pending files in one transaction, takes an advisory lock, and records applied names. Repeated runs skip applied migrations. Do not edit an applied migration; add a numbered SQL file. Builds, previews, and application startup never apply migrations.
+`pnpm db:migrate` loads `.env.local` if present. An existing process-level `DATABASE_URL` takes precedence, including the disposable database supplied by the test harness. The checked-in SQL initializes Better Auth's schema, the financial journal (migration `0002_journal.sql`), refunds (migration `0003_refunds.sql`), the category naming rules (migration `0004_category_lifecycle.sql`), and the record of Google Sheets exports (migration `0005_spreadsheet_exports.sql`). The runner applies pending files in one transaction, takes an advisory lock, and records applied names. Repeated runs skip applied migrations. Do not edit an applied migration; add a numbered SQL file. Builds, previews, and application startup never apply migrations.
 
 For a production-like local run:
 
@@ -85,6 +85,7 @@ pnpm test
 3. Apply migrations explicitly to that environment's database, using its direct Neon connection if preferred. Do not add migration commands to the Vercel build or startup scripts.
 4. Deploy. Open `/login`, sign in with the real verified owner, record income, an expense, and a refund, confirm the weekly figures persist after refresh, correct one entry's amount and date and delete another through the confirmation, then sign out and confirm private requests are refused. Try another Google identity and confirm denial. Check mobile and desktop.
 5. Record the deployment URL and results in `docs/verification.md`. Controlled Google tests do not establish real OAuth or Neon configuration.
+6. For the Sheets export, sign in with the authorized account, press **Export to Google Sheets**, authorize `drive.file` when asked, follow the returned link, and inspect the three tabs against the figures on screen. Then correct an entry and confirm the existing spreadsheet is unchanged. Record the result in `docs/sheets-export-verification.md`.
 
 References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installation), [Better Auth Google](https://better-auth.com/docs/authentication/google), [PostgreSQL adapter](https://better-auth.com/docs/adapters/postgresql), [identity admission](https://better-auth.com/docs/concepts/users-accounts), [shadcn/ui](https://ui.shadcn.com/docs/components/radix/button).
 
@@ -107,6 +108,20 @@ The `/categories` page manages the separate income and expense lists, and is rea
 A name is trimmed, holds 1 to 40 characters, carries no control characters, and is unique case-insensitively within one list, counting archived categories, so a taken name is restored or renamed rather than recreated (see `docs/adr/0005-bounded-category-names.md`). A database constraint and unique index enforce the same rules as request validation.
 
 Categories are related to financial movements by identity, never by label text, so a rename shows at once on existing entries, totals, and breakdowns. Archiving removes a category from the choices for new entries while every recorded movement, total, and breakdown keeps it; restoring the same category makes it selectable again without a replacement. Uncategorized reporting is unchanged, and entries stay optional-category. Every read and change is scoped to the signed-in owner by the statement itself, so another owner's category identifier matches nothing.
+
+## Google Sheets export
+
+The overview carries **Export to Google Sheets** next to **Add entry** on phone and desktop. It exports the period currently on screen, so the spreadsheet covers exactly the day, week, or month whose totals are displayed.
+
+Sign-in and export authorization are separate. Signing in never asks for file access; the first export that needs it offers **Connect Google Sheets export**, which asks Google for `drive.file` alone. Declining or revoking it leaves sign-in, the journal, categories, and every other operation untouched, and the control is offered again the next time an export runs.
+
+`POST /api/export` accepts `{ id, kind, date }`, requires JSON and the configured Origin, and proves a live owner session before anything else. `id` is a UUID naming this export. The response is `{ url, title }`, and a refusal is `{ error }` with `reconnect: true` when the owner has to authorize Google again. Provider tokens are minted per request on the server and are never returned.
+
+Each explicit export creates a new spreadsheet from the same owned-period dataset as the on-screen summary: a **Summary** tab with the covered start and end dates, the Mexico City generation date, MXN totals, net change, and entry count; a **Categories** tab with the same breakdown, including Uncategorized and archived categories; and an **Entries** tab with every movement, its type, category, note, and signed amount, where a refund reads as the reduction it is. The generation date is also in the spreadsheet title and is distinct from the period covered. Amounts are written as numbers; category names and notes are written as literal text, so input that looks like a formula stays text.
+
+The whole snapshot is written by the request that creates the spreadsheet, so a link is returned only once all of it is in it. A repeated submission of the same export returns the spreadsheet it already finished instead of creating another, and an identifier never covers a different period. When Google answers with a failure, nothing was created and the same export can be retried; when no answer arrives at all, the export is marked unconfirmed and refuses to create a second spreadsheet blindly, pointing the owner at Google Drive before exporting again. No failure changes financial records or categories.
+
+Snapshots are copies, not synchronized views: correcting or deleting movements, and renaming or archiving categories, never changes an existing spreadsheet, and the owner's own spreadsheet edits are never read back. A later explicit export creates a new artifact with the current data. There is no continuous sync, no scheduled export, and no sharing beyond the owner's own new file.
 
 ## Corrections and deletion
 
