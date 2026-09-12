@@ -86,7 +86,14 @@ test("days, weeks and months resolve the same Mexico City calendar boundaries", 
     leapDay.end,
     leapDay.today,
     leapDay.expenses,
-  ]).toEqual(["day", "2024-02-29", "2024-02-29", "2024-02-29", "2026-09-01", "5.00"]);
+  ]).toEqual([
+    "day",
+    "2024-02-29",
+    "2024-02-29",
+    "2024-02-29",
+    "2026-09-01",
+    "5.00",
+  ]);
   expect(leapDay.entries).toHaveLength(1);
   // A week spanning two months keeps its Monday–Sunday interval.
   const leapWeek = await summary(page, "week", "2024-02-29");
@@ -306,9 +313,9 @@ test("the server rejects unauthorized and unresolvable period requests", async (
   expect((await request.get("/api/journal?granularity=month")).status()).toBe(
     401,
   );
-  expect(
-    (await request.get("/api/journal?granularity=quarter")).status(),
-  ).toBe(401);
+  expect((await request.get("/api/journal?granularity=quarter")).status()).toBe(
+    401,
+  );
   for (const query of [
     "granularity=quarter",
     "granularity=year",
@@ -322,7 +329,9 @@ test("the server rejects unauthorized and unresolvable period requests", async (
     "granularity=day&date=",
     "granularity=month&date=2026-13-01",
   ])
-    expect((await page.request.get(`/api/journal?${query}`)).status()).toBe(400);
+    expect((await page.request.get(`/api/journal?${query}`)).status()).toBe(
+      400,
+    );
   for (const query of [
     "granularity=day&date=2026-09-01",
     "granularity=month&date=2024-02-29",
@@ -330,7 +339,9 @@ test("the server rejects unauthorized and unresolvable period requests", async (
     "granularity=week",
     "",
   ])
-    expect((await page.request.get(`/api/journal?${query}`)).status()).toBe(200);
+    expect((await page.request.get(`/api/journal?${query}`)).status()).toBe(
+      200,
+    );
   // A future period is browsable and simply has nothing recorded in it.
   const ahead = await summary(page, "month", "2027-03-10");
   expect([ahead.start, ahead.end, ahead.expenses, ahead.entries]).toEqual([

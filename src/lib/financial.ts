@@ -85,7 +85,11 @@ export type PeriodReport = PeriodRequest &
     netChange: string;
     categories: Category[];
     entries: Entry[];
-    breakdown: { categoryId: string | null; category: string; amount: string }[];
+    breakdown: {
+      categoryId: string | null;
+      category: string;
+      amount: string;
+    }[];
   };
 export function mexicoToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -138,7 +142,8 @@ export function shiftPeriod(
   direction: 1 | -1,
 ) {
   const moved = atNoon(periodContaining(granularity, date).start);
-  if (granularity === "month") moved.setUTCMonth(moved.getUTCMonth() + direction, 1);
+  if (granularity === "month")
+    moved.setUTCMonth(moved.getUTCMonth() + direction, 1);
   else
     moved.setUTCDate(
       moved.getUTCDate() + direction * (granularity === "week" ? 7 : 1),

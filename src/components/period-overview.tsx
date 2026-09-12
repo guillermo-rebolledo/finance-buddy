@@ -189,7 +189,10 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
   const current =
     report && report.today >= report.start && report.today <= report.end;
   return (
-    <main aria-busy={loading} className="flex flex-col gap-8 pb-16 pt-8 md:pt-14">
+    <main
+      aria-busy={loading}
+      className="flex flex-col gap-8 pb-16 pt-8 md:pt-14"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="font-serif text-4xl tracking-tight md:text-5xl">

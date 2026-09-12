@@ -316,7 +316,9 @@ test("movement dates define Monday–Sunday membership and backdated success is 
   await page.getByLabel("Amount (MXN)").fill("100");
   await page.getByLabel("Movement date", { exact: true }).fill("2026-08-30");
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("outside the period you are viewing");
+  await expect(page.getByRole("status")).toContainText(
+    "outside the period you are viewing",
+  );
   const report = await (await page.request.get("/api/journal")).json();
   expect(report.expenses).toBe("5.00");
   expect(report.entries.map((e: { date: string }) => e.date)).toEqual([
@@ -536,9 +538,7 @@ test("failed report loads show an error and retry instead of an empty period", a
   try {
     await page.reload();
     await expect(
-      page
-        .getByRole("alert")
-        .filter({ hasText: "Period unavailable" }),
+      page.getByRole("alert").filter({ hasText: "Period unavailable" }),
     ).toBeVisible();
     await expect(
       page.getByText("No entries in this period", { exact: true }),
