@@ -2,9 +2,11 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { database } from "./database";
 import {
+  categoryRefusal,
   centavos,
   decimal,
   entryKindDetails,
+  entryMissing,
   mexicoToday,
   summaryPeriod,
   type EntryKind,
@@ -176,13 +178,7 @@ export async function saveEntry(
       );
       if (!category.rowCount) {
         await client.query("ROLLBACK");
-        return {
-          field: "categoryId",
-          message:
-            entry.kind === "refund"
-              ? "Choose an active expense category for this refund, or leave it uncategorized."
-              : "Choose an active category for this entry type.",
-        };
+        return categoryRefusal(entry.kind);
       }
     }
     await client.query(
@@ -204,4 +200,54 @@ export async function saveEntry(
   } finally {
     client.release();
   }
+}
+// A correction replaces the whole entry in one owner-scoped statement, so a
+// failed category check leaves nothing changed and a repeated correction simply
+// writes the same values again. The entry keeps the archived category it already
+// carries while another field changes; any replacement must be active, and both
+// must belong to the movement type's own category list.
+export async function editEntry(
+  owner: string,
+  entry: EntryInput,
+): Promise<EntryError | undefined> {
+  const edited = await database().query(
+    `UPDATE financial_movement m SET kind=$3, amount_centavos=$4,
+      movement_date=$5::date, category_id=$6::uuid, note=$7
+    WHERE m.owner_id=$1 AND m.id=$2 AND ($6::uuid IS NULL OR EXISTS (
+      SELECT 1 FROM category c WHERE c.owner_id=$1 AND c.id=$6::uuid
+      AND c.kind=$8 AND (c.active OR c.id=m.category_id)))`,
+    [
+      owner,
+      entry.id,
+      entry.kind,
+      centavos(entry.amount).toString(),
+      entry.date,
+      entry.categoryId,
+      entry.note,
+      entryKindDetails[entry.kind as EntryKind].categoryKind,
+    ],
+  );
+  if (edited.rowCount) return;
+  // Nothing changed: either the entry is not the owner's, or its category was
+  // refused. Only the owner's own rows are ever distinguished.
+  const existing = await database().query(
+    "SELECT 1 FROM financial_movement WHERE owner_id=$1 AND id=$2",
+    [owner, entry.id],
+  );
+  return existing.rowCount
+    ? categoryRefusal(entry.kind)
+    : { field: "id", message: entryMissing };
+}
+// Deletion is permanent and leaves no trace to restore: the row is removed and
+// every total recomputes from what remains. Another owner's identifier, and one
+// already deleted, match nothing and change nothing.
+export async function deleteEntry(
+  owner: string,
+  id: string,
+): Promise<EntryError | undefined> {
+  const deleted = await database().query(
+    "DELETE FROM financial_movement WHERE owner_id=$1 AND id=$2",
+    [owner, id],
+  );
+  if (!deleted.rowCount) return { field: "id", message: entryMissing };
 }

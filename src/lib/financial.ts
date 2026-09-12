@@ -243,6 +243,16 @@ export function signedAmount(entry: { kind: string; amount: string }) {
     ? `-${entry.amount}`
     : entry.amount;
 }
+// One sentence naming a movement by its type, amount and movement date, so the
+// edit control, the delete confirmation and its announcement always describe the
+// same entry.
+export function entryTitle(entry: {
+  kind: string;
+  amount: string;
+  date: string;
+}) {
+  return `${entryKindDetail(entry.kind)?.label ?? entry.kind} of ${money(entry.amount)} on ${entry.date}`;
+}
 // Net change reads as a direction, so a period that gained money shows its sign.
 export function signedMoney(amount: string) {
   return amount.startsWith("-") || centavos(amount) === 0n
@@ -259,11 +269,8 @@ export function validateEntry(
   if (!input || typeof input !== "object")
     return { field: null, message: "Enter a valid financial movement." };
   const entry = input as EntryInput;
-  if (typeof entry.id !== "string" || !uuidPattern.test(entry.id))
-    return {
-      field: "id",
-      message: "Invalid entry identifier. Reload and try again.",
-    };
+  const target = validateEntryTarget(input);
+  if (target) return target;
   if (typeof entry.kind !== "string" || !entryKindDetail(entry.kind))
     return { field: "kind", message: "Choose income, expense, or refund." };
   if (
@@ -290,6 +297,32 @@ export function validateEntry(
   if (typeof entry.note !== "string" || entry.note.length > 2000)
     return { field: "note", message: "Keep the note within 2,000 characters." };
   return null;
+}
+
+export const entryMissing =
+  "That entry is not in your journal. Refresh to see the current period.";
+// Editing and deletion name an existing entry; only its identifier is read from
+// the request, and ownership always comes from the session.
+export function validateEntryTarget(input: unknown): EntryError | null {
+  const id = (input as { id?: unknown } | null)?.id;
+  if (typeof id !== "string" || !uuidPattern.test(id))
+    return {
+      field: "id",
+      message: "Invalid entry identifier. Reload and try again.",
+    };
+  return null;
+}
+// The same refusal whether an entry is being created or corrected: a category
+// must be active and drawn from the movement type's own list. A correction may
+// additionally keep the archived category the entry already carries.
+export function categoryRefusal(kind: string): EntryError {
+  return {
+    field: "categoryId",
+    message:
+      kind === "refund"
+        ? "Choose an active expense category for this refund, or leave it uncategorized."
+        : "Choose an active category for this entry type.",
+  };
 }
 
 // One descriptor per category change: how the control reads while idle, busy and

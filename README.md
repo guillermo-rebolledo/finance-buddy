@@ -83,7 +83,7 @@ pnpm test
 1. Link the `finance-buddy` Vercel project and select Next.js with Node 24.x. The committed pnpm version/lockfile select installation; build command is `pnpm build`.
 2. Provision Neon and configure the six environment variables for the target environment. Preview deployments should use a separate Neon branch/database, secret, and stable preview origin with its own registered Google callback.
 3. Apply migrations explicitly to that environment's database, using its direct Neon connection if preferred. Do not add migration commands to the Vercel build or startup scripts.
-4. Deploy. Open `/login`, sign in with the real verified owner, record income, an expense, and a refund, confirm the weekly figures persist after refresh, then sign out and confirm private requests are refused. Try another Google identity and confirm denial. Check mobile and desktop.
+4. Deploy. Open `/login`, sign in with the real verified owner, record income, an expense, and a refund, confirm the weekly figures persist after refresh, correct one entry's amount and date and delete another through the confirmation, then sign out and confirm private requests are refused. Try another Google identity and confirm denial. Check mobile and desktop.
 5. Record the deployment URL and results in `docs/verification.md`. Controlled Google tests do not establish real OAuth or Neon configuration.
 
 References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installation), [Better Auth Google](https://better-auth.com/docs/authentication/google), [PostgreSQL adapter](https://better-auth.com/docs/adapters/postgresql), [identity admission](https://better-auth.com/docs/concepts/users-accounts), [shadcn/ui](https://ui.shadcn.com/docs/components/radix/button).
@@ -94,7 +94,11 @@ References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installa
 
 `POST /api/journal` accepts `{ id, kind, amount, date, categoryId, note }`. Use a stable UUID for retries, `income`, `expense`, or `refund`, a positive decimal string (up to 12 whole digits and two decimal places), an ISO movement date, a nullable category UUID, and a note of at most 2,000 characters. Refunds are entered as positive amounts on their receipt date and accept the owner's active expense categories; an archived category must be restored through category management before a new entry can use it. Ownership comes only from the trusted session. Requests require JSON and the configured Origin. Repeating the same ID/payload returns success without inserting another entry; reusing an ID with different values is rejected.
 
-Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Corrections and exports remain separate issues. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals.
+`PATCH /api/journal` corrects an existing entry and takes the same body as a save, where `id` names the entry to change. Every field is replaced, the creation rules apply unchanged, and one owner-scoped statement either applies the whole correction or changes nothing. The entry keeps the archived category it already carries while another field changes; a replacement category must be active, and both must belong to the movement type's own list, so an income category never survives a change to expense or refund.
+
+`DELETE /api/journal` accepts `{ id }` and removes that entry permanently. There is no trash, restore, undo, or edit history. Deleting an entry that is not the owner's, or one already deleted, changes nothing and cannot recreate it. Category records and every other movement are untouched. Both methods require JSON and the configured Origin, and report a refusal as a `field` error exactly as saving does.
+
+Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Exports remain a separate issue. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals. Correcting an entry's date moves it out of one period and into the other, and both are recomputed from the stored movements.
 
 ## Category management
 
@@ -103,3 +107,9 @@ The `/categories` page manages the separate income and expense lists, and is rea
 A name is trimmed, holds 1 to 40 characters, carries no control characters, and is unique case-insensitively within one list, counting archived categories, so a taken name is restored or renamed rather than recreated (see `docs/adr/0005-bounded-category-names.md`). A database constraint and unique index enforce the same rules as request validation.
 
 Categories are related to financial movements by identity, never by label text, so a rename shows at once on existing entries, totals, and breakdowns. Archiving removes a category from the choices for new entries while every recorded movement, total, and breakdown keeps it; restoring the same category makes it selectable again without a replacement. Uncategorized reporting is unchanged, and entries stay optional-category. Every read and change is scoped to the signed-in owner by the statement itself, so another owner's category identifier matches nothing.
+
+## Corrections and deletion
+
+Every entry in the selected period carries Edit and Delete controls, including historical and uncategorized ones. Editing reopens the entry form on its recorded values under the heading **Edit entry** and enforces the same rules as recording it. Deleting opens a confirmation naming the entry's type, amount, movement date and category; keeping the entry changes nothing, and confirming removes it permanently from the journal and from every day, week, and month total that included it.
+
+A correction that is refused keeps the form values on screen, marks the field at fault, and never reports success. A correction or deletion whose response is lost says so and can be retried safely, because both apply the same values again rather than adding anything. Duplicate submission is disabled while either is pending, and the outcome takes focus when the control pressed disappears with its row.
