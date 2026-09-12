@@ -4,12 +4,18 @@ import {
   entryKindDetail,
   entryKinds,
   entryKindDetails,
+  granularities,
+  granularityDetails,
+  isCalendarDate,
   money,
+  periodLabel,
+  shiftPeriod,
   signedAmount,
   signedMoney,
   validateEntry,
   type EntryInput,
-  type WeeklyReport,
+  type Granularity,
+  type PeriodReport,
 } from "@/lib/financial";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,8 +40,14 @@ import {
 } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 
-export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
+export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
   const [report, setReport] = useState(initial);
+  const [granularity, setGranularity] = useState<Granularity>(
+    initial?.granularity ?? "week",
+  );
+  // A null anchor follows Mexico City's current date, so the page keeps
+  // resolving the current period across midnight without a browser clock.
+  const [anchor, setAnchor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(!initial);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -54,20 +66,40 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
     "aria-describedby": invalidField === name ? "entry-error" : undefined,
   });
   const form = useRef<HTMLFormElement>(null);
-  async function refresh() {
+  const requested = useRef(0);
+  // Every period change goes through one request, so the label, totals,
+  // breakdown and rows on screen always come from the same resolved period.
+  async function load(
+    next: { granularity?: Granularity; anchor?: string | null } = {},
+  ) {
+    const selected = next.granularity ?? granularity;
+    const date = next.anchor === undefined ? anchor : next.anchor;
+    setGranularity(selected);
+    setAnchor(date);
+    const query = new URLSearchParams({ granularity: selected });
+    if (date) query.set("date", date);
+    const sequence = ++requested.current;
     setLoading(true);
     try {
-      const response = await fetch("/api/journal", { cache: "no-store" });
+      const response = await fetch(`/api/journal?${query}`, {
+        cache: "no-store",
+      });
       if (!response.ok) throw new Error();
-      const latest: WeeklyReport = await response.json();
-      setReport(latest);
-      setLoadError(false);
+      const latest: PeriodReport = await response.json();
+      // A slower earlier request must not replace the period now on screen.
+      if (sequence === requested.current) {
+        setReport(latest);
+        setLoadError(false);
+      }
       return latest;
     } catch {
-      setLoadError(true);
+      if (sequence === requested.current) setLoadError(true);
     } finally {
-      setLoading(false);
+      if (sequence === requested.current) setLoading(false);
     }
+  }
+  function refresh() {
+    return load();
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -132,8 +164,8 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
       pending.current = null;
       setUncertain(false);
       setSuccess(
-        current && (entry.date < current.start || entry.date > current.end)
-          ? `Entry saved for ${entry.date}, outside this week. It is stored for future historical browsing.`
+        entry.date < current.start || entry.date > current.end
+          ? `Entry saved for ${entry.date}, outside the period you are viewing. Jump to that date to see it.`
           : "Entry saved.",
       );
       form.current?.reset();
@@ -150,17 +182,25 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
       setSaving(false);
     }
   }
+  // The anchor the controls act on: the period the server last resolved, or the
+  // pending selection while no report has loaded.
+  const selected = report?.date ?? anchor ?? "";
+  const shown = report?.granularity ?? granularity;
+  const current =
+    report && report.today >= report.start && report.today <= report.end;
   return (
-    <main className="flex flex-col gap-8 pb-16 pt-8 md:pt-14">
+    <main aria-busy={loading} className="flex flex-col gap-8 pb-16 pt-8 md:pt-14">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-            This week
+            {report
+              ? current
+                ? granularityDetails[shown].current
+                : periodLabel(shown, report)
+              : "Your overview"}
           </h1>
           <p className="text-muted-foreground">
-            {report
-              ? `${report.start} – ${report.end} · Monday–Sunday`
-              : "Your weekly overview"}
+            {report ? `${report.start} – ${report.end}` : "No period loaded"}
           </p>
           <p className="text-sm text-muted-foreground">Mexico City · MXN</p>
         </div>
@@ -179,15 +219,77 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
           Add entry
         </Button>
       </div>
+      <section
+        aria-label="Period navigation"
+        className="flex flex-col gap-3 border-y py-4"
+      >
+        <div className="flex flex-wrap items-end gap-4">
+          <Field className="w-32">
+            <FieldLabel htmlFor="granularity">Period</FieldLabel>
+            <NativeSelect
+              id="granularity"
+              value={granularity}
+              onChange={(event) =>
+                load({ granularity: event.target.value as Granularity })
+              }
+            >
+              {granularities.map((option) => (
+                <NativeSelectOption key={option} value={option}>
+                  {granularityDetails[option].label}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </Field>
+          <Field className="w-48">
+            <FieldLabel htmlFor="anchor">Jump to date</FieldLabel>
+            <Input
+              id="anchor"
+              type="date"
+              value={selected}
+              onChange={(event) => {
+                if (isCalendarDate(event.target.value))
+                  load({ anchor: event.target.value });
+              }}
+            />
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={!selected}
+              onClick={() =>
+                load({ anchor: shiftPeriod(granularity, selected, -1) })
+              }
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!selected}
+              onClick={() =>
+                load({ anchor: shiftPeriod(granularity, selected, 1) })
+              }
+            >
+              Next
+            </Button>
+            <Button variant="outline" onClick={() => load({ anchor: null })}>
+              Back to current period
+            </Button>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {granularityDetails[granularity].note}
+          {loading && " Loading…"}
+        </p>
+      </section>
       {success && <p role="status">{success}</p>}
       {loadError && (
         <Alert variant="destructive">
-          <AlertTitle>Weekly overview unavailable</AlertTitle>
+          <AlertTitle>Period unavailable</AlertTitle>
           <AlertDescription>
-            We could not load your current figures.{" "}
+            We could not load the figures for this period.{" "}
             {report && "Previously loaded figures may be out of date."}
             <Button variant="outline" disabled={loading} onClick={refresh}>
-              {loading ? "Loading…" : "Retry overview"}
+              {loading ? "Loading…" : "Retry period"}
             </Button>
           </AlertDescription>
         </Alert>
@@ -346,7 +448,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
       {report && (
         <>
           <section
-            aria-label="Weekly totals"
+            aria-label="Period totals"
             className="grid gap-4 md:grid-cols-3"
           >
             {[
@@ -364,7 +466,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                   </CardTitle>
                   {label === "Net change" && (
                     <CardDescription>
-                      Recorded activity for the week
+                      Recorded activity for this period
                     </CardDescription>
                   )}
                 </CardHeader>
@@ -397,7 +499,7 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
                 </ul>
               ) : (
                 <p className="text-muted-foreground">
-                  No expenses or refunds this week.
+                  No expenses or refunds in this period.
                 </p>
               )}
             </CardContent>
@@ -443,10 +545,10 @@ export function WeeklyOverview({ initial }: { initial: WeeklyReport | null }) {
               ) : (
                 <Empty>
                   <EmptyHeader>
-                    <EmptyTitle>No entries this week</EmptyTitle>
+                    <EmptyTitle>No entries in this period</EmptyTitle>
                     <EmptyDescription>
-                      Add income, an expense, or a refund to start your weekly
-                      overview.
+                      Add income, an expense, or a refund, or browse another
+                      day, week, or month.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

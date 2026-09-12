@@ -83,7 +83,7 @@ test("phone and desktop save optional fields, preserve invalid input, and recove
 }, testInfo) => {
   await overview(page);
   await expect(
-    page.getByText("No entries this week", { exact: true }),
+    page.getByText("No entries in this period", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await expect(page.getByLabel("Movement date", { exact: true })).toHaveValue(
@@ -316,7 +316,7 @@ test("movement dates define Monday–Sunday membership and backdated success is 
   await page.getByLabel("Amount (MXN)").fill("100");
   await page.getByLabel("Movement date", { exact: true }).fill("2026-08-30");
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("outside this week");
+  await expect(page.getByRole("status")).toContainText("outside the period you are viewing");
   const report = await (await page.request.get("/api/journal")).json();
   expect(report.expenses).toBe("5.00");
   expect(report.entries.map((e: { date: string }) => e.date)).toEqual([
@@ -381,7 +381,7 @@ test("refunds reduce expenses and totals without counting as income", async ({
     "800.00",
     "9200.00",
   ]);
-  const totals = page.getByRole("region", { name: "Weekly totals" });
+  const totals = page.getByRole("region", { name: "Period totals" });
   await expect(
     totals.getByText("MXN 10,000.00", { exact: true }),
   ).toBeVisible();
@@ -470,7 +470,7 @@ test("a standalone refund reduces only its own receipt period and keeps expense 
     { categoryId: null, category: "Uncategorized", amount: "-250.00" },
   ]);
   await page.reload();
-  const totals = page.getByRole("region", { name: "Weekly totals" });
+  const totals = page.getByRole("region", { name: "Period totals" });
   await expect(totals.getByText("-MXN 250.00", { exact: true })).toBeVisible();
   await expect(totals.getByText("+MXN 250.00", { exact: true })).toBeVisible();
   await expect(totals.getByText("MXN 0.00", { exact: true })).toBeVisible();
@@ -538,10 +538,10 @@ test("failed report loads show an error and retry instead of an empty period", a
     await expect(
       page
         .getByRole("alert")
-        .filter({ hasText: "Weekly overview unavailable" }),
+        .filter({ hasText: "Period unavailable" }),
     ).toBeVisible();
     await expect(
-      page.getByText("No entries this week", { exact: true }),
+      page.getByText("No entries in this period", { exact: true }),
     ).toHaveCount(0);
     expect((await page.request.get("/api/journal")).status()).toBe(503);
   } finally {
@@ -549,9 +549,9 @@ test("failed report loads show an error and retry instead of an empty period", a
       "ALTER TABLE unavailable_financial_movement RENAME TO financial_movement",
     );
   }
-  await page.getByRole("button", { name: "Retry overview" }).click();
+  await page.getByRole("button", { name: "Retry period" }).click();
   await expect(
-    page.getByText("No entries this week", { exact: true }),
+    page.getByText("No entries in this period", { exact: true }),
   ).toBeVisible();
 });
 
@@ -615,7 +615,7 @@ test("an open workspace and form follow Mexico City midnight", async ({
     "2026-09-07",
   );
   await expect(
-    page.getByText("2026-09-07 – 2026-09-13 · Monday–Sunday", { exact: true }),
+    page.getByText("2026-09-07 – 2026-09-13", { exact: true }),
   ).toBeVisible();
   await page.getByLabel("Type", { exact: true }).selectOption("income");
   await page
