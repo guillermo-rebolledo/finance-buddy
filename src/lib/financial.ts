@@ -46,37 +46,13 @@ export type EntryInput = {
   note: string;
 };
 export type Entry = EntryInput & { category: string; currency: "MXN" };
-// A summary covers one granularity anchored on a selected date; every consumer
-// reads the same resolved period, so labels, totals, breakdown and rows agree.
-export type Granularity = "day" | "week" | "month";
-export const granularityDetails: Record<
-  Granularity,
-  { label: string; current: string; note: string }
-> = {
-  day: {
-    label: "Day",
-    current: "Today",
-    note: "A day runs from midnight to midnight in Mexico City.",
-  },
-  week: {
-    label: "Week",
-    current: "This week",
-    note: "A week runs Monday through Sunday in Mexico City.",
-  },
-  month: {
-    label: "Month",
-    current: "This month",
-    note: "A month runs from its first through its last day in Mexico City.",
-  },
-};
-export const granularities = Object.keys(granularityDetails) as Granularity[];
-// Unvalidated input has no descriptor.
-export function granularityDetail(value: string) {
-  return granularityDetails[value as Granularity];
-}
+// A summary covers one kind of summary period anchored on a selected date.
+// Every consumer resolves it here, so labels, totals, breakdown and rows always
+// describe the same days.
+export type PeriodKind = "day" | "week" | "month";
 export type Period = { start: string; end: string };
-export type PeriodRequest = { granularity: Granularity; date: string };
-export type PeriodReport = PeriodRequest &
+export type SummaryRequest = { kind: PeriodKind; date: string };
+export type Summary = SummaryRequest &
   Period & {
     today: string;
     currency: "MXN";
@@ -115,75 +91,118 @@ export function isCalendarDate(value: unknown): value is string {
     calendarDate(atNoon(value)) === value
   );
 }
-// The one place a granularity becomes concrete start/end dates.
-export function periodContaining(
-  granularity: Granularity,
-  date: string,
-): Period {
-  const start = atNoon(date);
-  const end = atNoon(date);
-  if (granularity === "week") {
-    start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
-    // Counted from the week's own Monday, so a week may end in the next month.
-    end.setTime(start.getTime());
-    end.setUTCDate(end.getUTCDate() + 6);
-  } else if (granularity === "month") {
-    start.setUTCDate(1);
-    // Day zero of the following month is this month's last day, whatever its length.
-    end.setUTCMonth(end.getUTCMonth() + 1, 0);
-  }
-  return { start: calendarDate(start), end: calendarDate(end) };
-}
-// Stepping moves from the period's own start, so month lengths, year boundaries
-// and weeks spanning months all advance by exactly one period.
-export function shiftPeriod(
-  granularity: Granularity,
-  date: string,
-  direction: 1 | -1,
-) {
-  const moved = atNoon(periodContaining(granularity, date).start);
-  if (granularity === "month")
-    moved.setUTCMonth(moved.getUTCMonth() + direction, 1);
-  else
-    moved.setUTCDate(
-      moved.getUTCDate() + direction * (granularity === "week" ? 7 : 1),
-    );
+function addDays(date: string, count: number) {
+  const moved = atNoon(date);
+  moved.setUTCDate(moved.getUTCDate() + count);
   return calendarDate(moved);
 }
-const dayLabel = new Intl.DateTimeFormat("en-US", {
+const dayName = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
   weekday: "long",
   day: "numeric",
   month: "long",
   year: "numeric",
 });
-const boundaryLabel = new Intl.DateTimeFormat("en-US", {
+const boundaryName = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
   day: "numeric",
   month: "short",
   year: "numeric",
 });
-const monthLabel = new Intl.DateTimeFormat("en-US", {
+const monthName = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
   month: "long",
   year: "numeric",
 });
-export function periodLabel(granularity: Granularity, period: Period) {
-  if (granularity === "day") return dayLabel.format(atNoon(period.start));
-  if (granularity === "month") return monthLabel.format(atNoon(period.start));
-  return `${boundaryLabel.format(atNoon(period.start))} – ${boundaryLabel.format(atNoon(period.end))}`;
+// One descriptor per kind of summary period: how it reads, which days it
+// contains, how a step of exactly one period moves, and how it is labelled.
+// Every other place asks this map instead of testing the kind again.
+export const periodKindDetails: Record<
+  PeriodKind,
+  {
+    label: string;
+    current: string;
+    note: string;
+    containing: (date: string) => Period;
+    step: (start: string, direction: 1 | -1) => string;
+    name: (period: Period) => string;
+  }
+> = {
+  day: {
+    label: "Day",
+    current: "Today",
+    note: "A day runs from midnight to midnight in Mexico City.",
+    containing: (date) => ({ start: date, end: date }),
+    step: (start, direction) => addDays(start, direction),
+    name: (period) => dayName.format(atNoon(period.start)),
+  },
+  week: {
+    label: "Week",
+    current: "This week",
+    note: "A week runs Monday through Sunday in Mexico City.",
+    containing: (date) => {
+      const start = addDays(date, -((atNoon(date).getUTCDay() + 6) % 7));
+      // Counted from the week's own Monday, so a week may end in another month.
+      return { start, end: addDays(start, 6) };
+    },
+    step: (start, direction) => addDays(start, direction * 7),
+    name: (period) =>
+      `${boundaryName.format(atNoon(period.start))} – ${boundaryName.format(atNoon(period.end))}`,
+  },
+  month: {
+    label: "Month",
+    current: "This month",
+    note: "A month runs from its first through its last day in Mexico City.",
+    containing: (date) => {
+      const start = atNoon(date);
+      start.setUTCDate(1);
+      const end = atNoon(date);
+      // Day zero of the next month is this month's last day, whatever its length.
+      end.setUTCMonth(end.getUTCMonth() + 1, 0);
+      return { start: calendarDate(start), end: calendarDate(end) };
+    },
+    step: (start, direction) => {
+      const moved = atNoon(start);
+      moved.setUTCMonth(moved.getUTCMonth() + direction, 1);
+      return calendarDate(moved);
+    },
+    name: (period) => monthName.format(atNoon(period.start)),
+  },
+};
+export const periodKinds = Object.keys(periodKindDetails) as PeriodKind[];
+// Unvalidated input and an unknown selection have no descriptor.
+export function periodKindDetail(value: string) {
+  return periodKindDetails[value as PeriodKind];
 }
-// Rejects anything a period cannot be resolved from; absent parts mean the
-// current week in Mexico City, which stays the landing view.
-export function parsePeriodRequest(
-  granularity: string | null,
+export function summaryPeriod(kind: PeriodKind, date: string) {
+  return periodKindDetails[kind].containing(date);
+}
+// Stepping starts from the period's own first day, so month lengths, year
+// boundaries and weeks spanning months all move by exactly one period.
+export function shiftPeriod(kind: PeriodKind, date: string, direction: 1 | -1) {
+  return periodKindDetails[kind].step(
+    summaryPeriod(kind, date).start,
+    direction,
+  );
+}
+export function periodLabel(kind: PeriodKind, period: Period) {
+  return periodKindDetails[kind].name(period);
+}
+// The landing view, and the fallback for anything a request leaves out.
+export function currentWeek(today: string): SummaryRequest {
+  return { kind: "week", date: today };
+}
+// Rejects anything a summary period cannot be resolved from.
+export function parseSummaryRequest(
+  kind: string | null,
   date: string | null,
   today: string,
-): PeriodRequest | null {
-  const resolved = granularity ?? "week";
-  if (!granularityDetail(resolved)) return null;
+): SummaryRequest | null {
+  const fallback = currentWeek(today);
+  const requested = kind ?? fallback.kind;
+  if (!periodKindDetail(requested)) return null;
   if (date !== null && !isCalendarDate(date)) return null;
-  return { granularity: resolved as Granularity, date: date ?? today };
+  return { kind: requested as PeriodKind, date: date ?? fallback.date };
 }
 export function centavos(amount: string) {
   const [whole, fraction = ""] = amount.split(".");

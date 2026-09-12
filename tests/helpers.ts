@@ -36,3 +36,15 @@ export async function signIn(
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google" }).click();
 }
+
+// The server clock is the only clock a summary may depend on, so tests move it
+// explicitly instead of relying on the machine's own date.
+export async function moveClockTo(instant: string) {
+  await writeFile(
+    process.env.TEST_CLOCK_FILE!,
+    String(Date.parse(instant) - Date.now()),
+  );
+}
+export async function resetClock() {
+  await writeFile(process.env.TEST_CLOCK_FILE!, "0");
+}

@@ -4,18 +4,19 @@ import {
   entryKindDetail,
   entryKinds,
   entryKindDetails,
-  granularities,
-  granularityDetails,
   isCalendarDate,
   money,
+  periodKindDetails,
+  periodKinds,
   periodLabel,
   shiftPeriod,
   signedAmount,
   signedMoney,
+  summaryPeriod,
   validateEntry,
   type EntryInput,
-  type Granularity,
-  type PeriodReport,
+  type PeriodKind,
+  type Summary,
 } from "@/lib/financial";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,14 +41,15 @@ import {
 } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 
-export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
-  const [report, setReport] = useState(initial);
-  const [granularity, setGranularity] = useState<Granularity>(
-    initial?.granularity ?? "week",
-  );
-  // A null anchor follows Mexico City's current date, so the page keeps
-  // resolving the current period across midnight without a browser clock.
-  const [anchor, setAnchor] = useState<string | null>(null);
+export function SummaryOverview({ initial }: { initial: Summary | null }) {
+  const [summary, setSummary] = useState(initial);
+  // The period the controls ask for. A null date follows Mexico City's current
+  // date, so an open page keeps resolving the current period across midnight
+  // without ever trusting the browser clock.
+  const [view, setView] = useState<{ kind: PeriodKind; date: string | null }>({
+    kind: initial?.kind ?? "week",
+    date: null,
+  });
   const [loadError, setLoadError] = useState(!initial);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -67,17 +69,12 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
   });
   const form = useRef<HTMLFormElement>(null);
   const requested = useRef(0);
-  // Every period change goes through one request, so the label, totals,
-  // breakdown and rows on screen always come from the same resolved period.
-  async function load(
-    next: { granularity?: Granularity; anchor?: string | null } = {},
-  ) {
-    const selected = next.granularity ?? granularity;
-    const date = next.anchor === undefined ? anchor : next.anchor;
-    setGranularity(selected);
-    setAnchor(date);
-    const query = new URLSearchParams({ granularity: selected });
-    if (date) query.set("date", date);
+  // One request per period selection: the label, totals, breakdown and rows on
+  // screen always come from a single resolved period, never a mixture.
+  async function show(next: { kind: PeriodKind; date: string | null }) {
+    setView(next);
+    const query = new URLSearchParams({ kind: next.kind });
+    if (next.date) query.set("date", next.date);
     const sequence = ++requested.current;
     setLoading(true);
     try {
@@ -85,10 +82,10 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
         cache: "no-store",
       });
       if (!response.ok) throw new Error();
-      const latest: PeriodReport = await response.json();
+      const latest: Summary = await response.json();
       // A slower earlier request must not replace the period now on screen.
       if (sequence === requested.current) {
-        setReport(latest);
+        setSummary(latest);
         setLoadError(false);
       }
       return latest;
@@ -97,9 +94,6 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
     } finally {
       if (sequence === requested.current) setLoading(false);
     }
-  }
-  function refresh() {
-    return load();
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -115,7 +109,7 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
     };
     inFlight.current = true;
     setSaving(true);
-    const current = await refresh();
+    const current = await show(view);
     if (!current) {
       setInvalidField(null);
       setError(
@@ -171,7 +165,7 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
       form.current?.reset();
       setKind("");
       setOpen(false);
-      await refresh();
+      await show(view);
     } catch {
       setUncertain(true);
       setError(
@@ -182,12 +176,17 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
       setSaving(false);
     }
   }
-  // The anchor the controls act on: the period the server last resolved, or the
-  // pending selection while no report has loaded.
-  const selected = report?.date ?? anchor ?? "";
-  const shown = report?.granularity ?? granularity;
-  const current =
-    report && report.today >= report.start && report.today <= report.end;
+  // The date the controls step from: the pending selection, or the period the
+  // server last resolved while the selection still follows today.
+  const anchor = view.date ?? summary?.date ?? "";
+  // Every label describes the period actually loaded, so a failed or pending
+  // selection never relabels figures that came from another period.
+  const loaded = summary && periodKindDetails[summary.kind];
+  const showsToday =
+    summary && summary.today >= summary.start && summary.today <= summary.end;
+  const requestedLabel = anchor
+    ? periodLabel(view.kind, summaryPeriod(view.kind, anchor))
+    : `the current ${periodKindDetails[view.kind].label.toLowerCase()}`;
   return (
     <main
       aria-busy={loading}
@@ -196,22 +195,22 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-            {report
-              ? current
-                ? granularityDetails[shown].current
-                : periodLabel(shown, report)
-              : "Your overview"}
+            {summary && loaded
+              ? showsToday
+                ? loaded.current
+                : periodLabel(summary.kind, summary)
+              : "Your summary"}
           </h1>
           <p className="text-muted-foreground">
-            {report ? `${report.start} – ${report.end}` : "No period loaded"}
+            {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
           </p>
           <p className="text-sm text-muted-foreground">Mexico City · MXN</p>
         </div>
         <Button
           size="lg"
-          disabled={!report || loading}
+          disabled={!summary || loading}
           onClick={async () => {
-            if (!open && !(await refresh())) return;
+            if (!open && !(await show(view))) return;
             setOpen(true);
             setSuccess("");
             requestAnimationFrame(() =>
@@ -228,17 +227,21 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
       >
         <div className="flex flex-wrap items-end gap-4">
           <Field className="w-32">
-            <FieldLabel htmlFor="granularity">Period</FieldLabel>
+            <FieldLabel htmlFor="period">Period</FieldLabel>
             <NativeSelect
-              id="granularity"
-              value={granularity}
+              id="period"
+              value={view.kind}
               onChange={(event) =>
-                load({ granularity: event.target.value as Granularity })
+                // The anchor date survives a change of period kind.
+                show({
+                  kind: event.target.value as PeriodKind,
+                  date: view.date,
+                })
               }
             >
-              {granularities.map((option) => (
+              {periodKinds.map((option) => (
                 <NativeSelectOption key={option} value={option}>
-                  {granularityDetails[option].label}
+                  {periodKindDetails[option].label}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -248,39 +251,50 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
             <Input
               id="anchor"
               type="date"
-              value={selected}
+              value={anchor}
               onChange={(event) => {
                 if (isCalendarDate(event.target.value))
-                  load({ anchor: event.target.value });
+                  show({ kind: view.kind, date: event.target.value });
               }}
             />
           </Field>
           <div className="flex flex-wrap gap-2">
+            {/* With no period known yet there is nothing to step from; the date
+                picker and Back to current period still reach one. */}
             <Button
               variant="outline"
-              disabled={!selected}
+              disabled={!anchor}
               onClick={() =>
-                load({ anchor: shiftPeriod(granularity, selected, -1) })
+                show({
+                  kind: view.kind,
+                  date: shiftPeriod(view.kind, anchor, -1),
+                })
               }
             >
               Previous
             </Button>
             <Button
               variant="outline"
-              disabled={!selected}
+              disabled={!anchor}
               onClick={() =>
-                load({ anchor: shiftPeriod(granularity, selected, 1) })
+                show({
+                  kind: view.kind,
+                  date: shiftPeriod(view.kind, anchor, 1),
+                })
               }
             >
               Next
             </Button>
-            <Button variant="outline" onClick={() => load({ anchor: null })}>
+            <Button
+              variant="outline"
+              onClick={() => show({ kind: view.kind, date: null })}
+            >
               Back to current period
             </Button>
           </div>
         </div>
         <p className="text-sm text-muted-foreground">
-          {granularityDetails[granularity].note}
+          {(loaded ?? periodKindDetails[view.kind]).note}
           {loading && " Loading…"}
         </p>
       </section>
@@ -289,15 +303,20 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
         <Alert variant="destructive">
           <AlertTitle>Period unavailable</AlertTitle>
           <AlertDescription>
-            We could not load the figures for this period.{" "}
-            {report && "Previously loaded figures may be out of date."}
-            <Button variant="outline" disabled={loading} onClick={refresh}>
+            We could not load {requestedLabel}.{" "}
+            {summary &&
+              `The figures below still describe ${periodLabel(summary.kind, summary)}.`}
+            <Button
+              variant="outline"
+              disabled={loading}
+              onClick={() => show(view)}
+            >
               {loading ? "Loading…" : "Retry period"}
             </Button>
           </AlertDescription>
         </Alert>
       )}
-      {open && report && (
+      {open && summary && (
         <Card>
           <CardHeader>
             <CardTitle>
@@ -361,7 +380,7 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
                       name="date"
                       {...fieldProps("date")}
                       type="date"
-                      defaultValue={report.today}
+                      defaultValue={summary.today}
                       required
                     />
                     <p className="text-sm text-muted-foreground">
@@ -382,7 +401,7 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
                       <NativeSelectOption value="">
                         Uncategorized
                       </NativeSelectOption>
-                      {report.categories
+                      {summary.categories
                         .filter(
                           (category) =>
                             category.kind ===
@@ -448,16 +467,16 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
           </CardContent>
         </Card>
       )}
-      {report && (
+      {summary && (
         <>
           <section
             aria-label="Period totals"
             className="grid gap-4 md:grid-cols-3"
           >
             {[
-              ["Total income", money(report.income)],
-              ["Total expenses", money(report.expenses)],
-              ["Net change", signedMoney(report.netChange)],
+              ["Total income", money(summary.income)],
+              ["Total expenses", money(summary.expenses)],
+              ["Net change", signedMoney(summary.netChange)],
             ].map(([label, amount]) => (
               <Card key={label}>
                 <CardHeader>
@@ -486,9 +505,9 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {report.breakdown.length ? (
+              {summary.breakdown.length ? (
                 <ul className="flex flex-col gap-4">
-                  {report.breakdown.map((group) => (
+                  {summary.breakdown.map((group) => (
                     <li
                       key={group.categoryId ?? "uncategorized"}
                       className="flex flex-wrap justify-between gap-2"
@@ -515,9 +534,9 @@ export function PeriodOverview({ initial }: { initial: PeriodReport | null }) {
               <CardDescription>Latest movement date first.</CardDescription>
             </CardHeader>
             <CardContent>
-              {report.entries.length ? (
+              {summary.entries.length ? (
                 <ul className="divide-y">
-                  {report.entries.map((entry) => (
+                  {summary.entries.map((entry) => (
                     <li
                       key={entry.id}
                       className="flex flex-col gap-2 py-4 first:pt-0"

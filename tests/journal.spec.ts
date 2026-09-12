@@ -1,8 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { moveClockTo, resetClock, signIn } from "./helpers";
 import { centavos } from "../src/lib/financial";
 import { Pool } from "pg";
-import { writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
 const origin = "http://127.0.0.1:3100";
@@ -12,15 +11,12 @@ test.beforeEach(async () => {
 });
 test.afterAll(async () => {
   await pool.end();
-  await writeFile(process.env.TEST_CLOCK_FILE!, "0");
+  await resetClock();
 });
 async function overview(page: import("@playwright/test").Page) {
   await signIn(page);
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
-  await writeFile(
-    process.env.TEST_CLOCK_FILE!,
-    String(Date.parse("2026-09-07T05:30:00Z") - Date.now()),
-  );
+  await moveClockTo("2026-09-07T05:30:00Z");
   await page.reload();
   return (await page.request.get("/api/journal")).json();
 }
@@ -325,10 +321,7 @@ test("movement dates define Monday–Sunday membership and backdated success is 
     "2026-09-06",
     "2026-08-31",
   ]);
-  await writeFile(
-    process.env.TEST_CLOCK_FILE!,
-    String(Date.parse("2026-08-30T18:00:00Z") - Date.now()),
-  );
+  await moveClockTo("2026-08-30T18:00:00Z");
   const earlier = await (await page.request.get("/api/journal")).json();
   expect(earlier.expenses).toBe("100.00");
   expect(earlier.entries).toHaveLength(1);
@@ -451,10 +444,7 @@ test("a standalone refund reduces only its own receipt period and keeps expense 
   );
   expect((await post(page, { amount: "500" })).status()).toBe(200);
   // The refund is received in the following week, with no original purchase recorded.
-  await writeFile(
-    process.env.TEST_CLOCK_FILE!,
-    String(Date.parse("2026-09-09T18:00:00Z") - Date.now()),
-  );
+  await moveClockTo("2026-09-09T18:00:00Z");
   expect(
     (
       await post(page, { kind: "refund", amount: "250", date: "2026-09-09" })
@@ -516,10 +506,7 @@ test("a standalone refund reduces only its own receipt period and keeps expense 
     ).status(),
   ).toBe(200);
   // The purchase period is untouched by the later refund.
-  await writeFile(
-    process.env.TEST_CLOCK_FILE!,
-    String(Date.parse("2026-09-06T18:00:00Z") - Date.now()),
-  );
+  await moveClockTo("2026-09-06T18:00:00Z");
   const purchase = await (await page.request.get("/api/journal")).json();
   expect([purchase.expenses, purchase.netChange]).toEqual([
     "500.00",
@@ -563,10 +550,7 @@ test("all period rows reconcile exactly across calendar boundaries", async ({
     ["2024-02-29T18:00:00Z", "2024-02-29", "2024-02-26", "2024-03-03"],
     ["2025-12-31T18:00:00Z", "2025-12-31", "2025-12-29", "2026-01-04"],
   ]) {
-    await writeFile(
-      process.env.TEST_CLOCK_FILE!,
-      String(Date.parse(instant) - Date.now()),
-    );
+    await moveClockTo(instant);
     expect((await post(page, { date: today, amount: "0.10" })).status()).toBe(
       200,
     );
@@ -578,10 +562,7 @@ test("all period rows reconcile exactly across calendar boundaries", async ({
       "0.10",
     ]);
   }
-  await writeFile(
-    process.env.TEST_CLOCK_FILE!,
-    String(Date.parse("2026-09-07T06:30:00Z") - Date.now()),
-  );
+  await moveClockTo("2026-09-07T06:30:00Z");
   const id = randomUUID();
   expect((await post(page, { id, date: "2026-09-07" })).status()).toBe(200);
   expect(
@@ -606,10 +587,7 @@ test("an open workspace and form follow Mexico City midnight", async ({
   page,
 }) => {
   await overview(page);
-  await writeFile(
-    process.env.TEST_CLOCK_FILE!,
-    String(Date.parse("2026-09-07T06:01:00Z") - Date.now()),
-  );
+  await moveClockTo("2026-09-07T06:01:00Z");
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await expect(page.getByLabel("Movement date", { exact: true })).toHaveValue(
     "2026-09-07",
@@ -623,10 +601,7 @@ test("an open workspace and form follow Mexico City midnight", async ({
     .selectOption({ label: "Salary" });
   await page.getByLabel("Amount (MXN)").fill("100");
   // The form itself remains open over another midnight.
-  await writeFile(
-    process.env.TEST_CLOCK_FILE!,
-    String(Date.parse("2026-09-08T06:01:00Z") - Date.now()),
-  );
+  await moveClockTo("2026-09-08T06:01:00Z");
   await page.getByLabel("Movement date", { exact: true }).fill("2026-09-08");
   expect(
     await page

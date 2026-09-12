@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { moveClockTo, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
-import { writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
 const origin = "http://127.0.0.1:3100";
@@ -11,23 +10,14 @@ test.beforeEach(async () => {
 });
 test.afterAll(async () => {
   await pool.end();
-  await writeFile(process.env.TEST_CLOCK_FILE!, "0");
+  await resetClock();
 });
 // Mexico City midday on Tuesday 1 September 2026, a week and a month still running.
 async function atMidday(page: import("@playwright/test").Page) {
   await signIn(page);
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
-  await moveClockTo(page, "2026-09-01T18:00:00Z");
+  await moveClockTo("2026-09-01T18:00:00Z");
   await page.reload();
-}
-async function moveClockTo(
-  page: import("@playwright/test").Page,
-  instant: string,
-) {
-  await writeFile(
-    process.env.TEST_CLOCK_FILE!,
-    String(Date.parse(instant) - Date.now()),
-  );
 }
 async function post(
   page: import("@playwright/test").Page,
@@ -49,11 +39,11 @@ async function post(
 }
 async function summary(
   page: import("@playwright/test").Page,
-  granularity?: string,
+  kind?: string,
   date?: string,
 ) {
   const query = new URLSearchParams();
-  if (granularity) query.set("granularity", granularity);
+  if (kind) query.set("kind", kind);
   if (date) query.set("date", date);
   const response = await page.request.get(`/api/journal?${query}`);
   expect(response.status()).toBe(200);
@@ -80,7 +70,7 @@ test("days, weeks and months resolve the same Mexico City calendar boundaries", 
   // Entries recorded today still belong to the historical periods they happened in.
   const leapDay = await summary(page, "day", "2024-02-29");
   expect([
-    leapDay.granularity,
+    leapDay.kind,
     leapDay.date,
     leapDay.start,
     leapDay.end,
@@ -134,7 +124,7 @@ test("days, weeks and months resolve the same Mexico City calendar boundaries", 
   expect((await summary(page, "month", "2025-12-31")).income).toBe("100.00");
   // The current week still lands first and still includes its future days.
   const landing = await summary(page);
-  expect([landing.granularity, landing.start, landing.end]).toEqual([
+  expect([landing.kind, landing.start, landing.end]).toEqual([
     "week",
     "2026-08-31",
     "2026-09-06",
@@ -269,7 +259,7 @@ test("period navigation moves one period at a time and returns to the current on
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(heading).toHaveText("Dec 29, 2025 – Jan 4, 2026");
   // Back to current period recalculates today, across a Mexico City midnight.
-  await moveClockTo(page, "2026-09-02T06:01:00Z");
+  await moveClockTo("2026-09-02T06:01:00Z");
   await page
     .getByRole("button", { name: "Back to current period", exact: true })
     .click();
@@ -290,7 +280,7 @@ test("the browser time zone never decides which period is current", async ({
   });
   const page = await context.newPage();
   await atMidday(page);
-  await moveClockTo(page, "2026-09-02T05:00:00Z");
+  await moveClockTo("2026-09-02T05:00:00Z");
   await page
     .getByRole("button", { name: "Back to current period", exact: true })
     .click();
@@ -317,26 +307,26 @@ test("the server rejects unauthorized and unresolvable period requests", async (
     401,
   );
   for (const query of [
-    "granularity=quarter",
-    "granularity=year",
-    "granularity=",
-    "granularity=Week",
+    "kind=quarter",
+    "kind=year",
+    "kind=",
+    "kind=Week",
     "date=2026-02-30",
     "date=2025-02-29",
     "date=0000-01-01",
     "date=2026-9-1",
     "date=yesterday",
-    "granularity=day&date=",
-    "granularity=month&date=2026-13-01",
+    "kind=day&date=",
+    "kind=month&date=2026-13-01",
   ])
     expect((await page.request.get(`/api/journal?${query}`)).status()).toBe(
       400,
     );
   for (const query of [
-    "granularity=day&date=2026-09-01",
-    "granularity=month&date=2024-02-29",
+    "kind=day&date=2026-09-01",
+    "kind=month&date=2024-02-29",
     "date=2024-02-29",
-    "granularity=week",
+    "kind=week",
     "",
   ])
     expect((await page.request.get(`/api/journal?${query}`)).status()).toBe(
@@ -350,4 +340,41 @@ test("the server rejects unauthorized and unresolvable period requests", async (
     "0.00",
     [],
   ]);
+});
+
+test("a failed period load keeps labels, figures and the selection coherent", async ({
+  page,
+}) => {
+  await atMidday(page);
+  await post(page, { date: "2026-09-01", amount: "4" });
+  await page.reload();
+  const heading = page.getByRole("heading", { level: 1 });
+  await expect(heading).toHaveText("This week");
+  await pool.query(
+    "ALTER TABLE financial_movement RENAME TO unavailable_financial_movement",
+  );
+  try {
+    await page.getByRole("button", { name: "Previous", exact: true }).click();
+    const alert = page
+      .getByRole("alert")
+      .filter({ hasText: "Period unavailable" });
+    await expect(alert).toContainText("Aug 24, 2026 – Aug 30, 2026");
+    await expect(alert).toContainText("Aug 31, 2026 – Sep 6, 2026");
+    // Nothing is relabelled: the figures still describe the week that loaded.
+    await expect(heading).toHaveText("This week");
+    await expect(page.getByText("2026-08-31 – 2026-09-06")).toBeVisible();
+    await expect(page.getByText("MXN 4.00").first()).toBeVisible();
+  } finally {
+    await pool.query(
+      "ALTER TABLE unavailable_financial_movement RENAME TO financial_movement",
+    );
+  }
+  // Navigation stays usable, and retrying loads the period still selected.
+  await page.getByRole("button", { name: "Retry period" }).click();
+  await expect(heading).toHaveText("Aug 24, 2026 – Aug 30, 2026");
+  await page
+    .getByRole("button", { name: "Back to current period", exact: true })
+    .click();
+  await expect(heading).toHaveText("This week");
+  await expect(page.getByText("MXN 4.00").first()).toBeVisible();
 });

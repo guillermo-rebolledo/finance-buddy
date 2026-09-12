@@ -4,8 +4,9 @@ import { getAccess } from "@/lib/auth";
 import { AuthButton } from "@/components/auth-button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { BookOpen } from "lucide-react";
-import { PeriodOverview } from "@/components/period-overview";
-import { periodReport } from "@/lib/journal";
+import { SummaryOverview } from "@/components/summary-overview";
+import { summarize } from "@/lib/journal";
+import { currentWeek, mexicoToday } from "@/lib/financial";
 export const dynamic = "force-dynamic";
 export default async function Home() {
   const access = await getAccess(await headers());
@@ -22,7 +23,10 @@ export default async function Home() {
     );
   if (access.status !== "authorized") redirect("/login");
   // The current week stays the landing view; other periods load from here.
-  const report = await periodReport(access.userId).catch(() => null);
+  const summary = await summarize(
+    access.userId,
+    currentWeek(mexicoToday()),
+  ).catch(() => null);
   return (
     <div className="mx-auto max-w-5xl px-6">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b py-6">
@@ -32,7 +36,7 @@ export default async function Home() {
         </div>
         <AuthButton action="signout" />
       </header>
-      <PeriodOverview initial={report} />
+      <SummaryOverview initial={summary} />
     </div>
   );
 }

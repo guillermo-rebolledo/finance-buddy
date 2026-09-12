@@ -7,13 +7,13 @@ import {
   decimal,
   entryKindDetails,
   mexicoToday,
-  periodContaining,
+  summaryPeriod,
   type EntryKind,
   type Category,
   type EntryError,
   type EntryInput,
-  type PeriodReport,
-  type PeriodRequest,
+  type Summary,
+  type SummaryRequest,
 } from "./financial";
 let pool: Pool;
 function database() {
@@ -63,17 +63,15 @@ async function seedCategories(owner: string) {
     client.release();
   }
 }
-// One report shape serves every granularity: the requested period resolves to
-// start/end dates, and the same arithmetic then fills totals, breakdown and rows.
-export async function periodReport(
+// One summary shape serves every kind of period: the request resolves to start
+// and end dates, and the same arithmetic then fills totals, breakdown and rows.
+export async function summarize(
   owner: string,
-  request?: PeriodRequest,
-): Promise<PeriodReport> {
+  request: SummaryRequest,
+): Promise<Summary> {
   await seedCategories(owner);
   const today = mexicoToday();
-  const granularity = request?.granularity ?? "week";
-  const date = request?.date ?? today;
-  const period = periodContaining(granularity, date);
+  const period = summaryPeriod(request.kind, request.date);
   // One statement supplies both entries and choices from the same PostgreSQL snapshot.
   const {
     rows: [data],
@@ -127,8 +125,7 @@ export async function periodReport(
   );
   return {
     today,
-    granularity,
-    date,
+    ...request,
     ...period,
     currency: "MXN",
     categories: data.categories as Category[],

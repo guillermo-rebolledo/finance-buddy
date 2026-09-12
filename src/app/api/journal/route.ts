@@ -2,10 +2,10 @@ import { getAccess } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
 import {
   mexicoToday,
-  parsePeriodRequest,
+  parseSummaryRequest,
   validateEntry,
 } from "@/lib/financial";
-import { periodReport, saveEntry } from "@/lib/journal";
+import { saveEntry, summarize } from "@/lib/journal";
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store" };
 async function handle(request: Request, write: boolean) {
@@ -35,8 +35,8 @@ async function handle(request: Request, write: boolean) {
   try {
     if (!write) {
       const url = new URL(request.url);
-      const period = parsePeriodRequest(
-        url.searchParams.get("granularity"),
+      const period = parseSummaryRequest(
+        url.searchParams.get("kind"),
         url.searchParams.get("date"),
         mexicoToday(),
       );
@@ -45,9 +45,7 @@ async function handle(request: Request, write: boolean) {
           { error: "Choose a day, week, or month with a valid date." },
           { status: 400, headers },
         );
-      return Response.json(await periodReport(access.userId, period), {
-        headers,
-      });
+      return Response.json(await summarize(access.userId, period), { headers });
     }
     const input = await request.json().catch(() => null);
     const error = validateEntry(input, mexicoToday());
