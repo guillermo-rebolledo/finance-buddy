@@ -3,8 +3,8 @@ import { BookOpen } from "lucide-react";
 import { AuthButton } from "@/components/auth-button";
 import { Button } from "@/components/ui/button";
 
-// Both signed-in pages share one header, so the overview and the Categories page
-// are always one link apart.
+// Every signed-in page shares one header, so the registry, the dashboard and the
+// Categories page are always one link apart.
 export function AppHeader() {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b py-6">
@@ -14,7 +14,10 @@ export function AppHeader() {
       </div>
       <nav aria-label="Sections" className="flex flex-wrap items-center gap-1">
         <Button asChild variant="ghost">
-          <Link href="/">Overview</Link>
+          <Link href="/">Entries</Link>
+        </Button>
+        <Button asChild variant="ghost">
+          <Link href="/dashboard">Dashboard</Link>
         </Button>
         <Button asChild variant="ghost">
           <Link href="/categories">Categories</Link>

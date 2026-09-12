@@ -253,7 +253,7 @@ test("period navigation moves one period at a time and returns to the current on
   await label.selectOption("week");
   await page.getByLabel("Jump to date").fill("2026-01-01");
   await expect(heading).toHaveText("Dec 29, 2025 – Jan 4, 2026");
-  await expect(page.getByText("+MXN 93.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("MXN 100.00", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Previous", exact: true }).click();
   await expect(heading).toHaveText("Dec 22, 2025 – Dec 28, 2025");
   await page.getByRole("button", { name: "Next", exact: true }).click();

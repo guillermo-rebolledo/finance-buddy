@@ -15,8 +15,8 @@ async function connect() {
     // Google returns a refresh token only for an offline grant it has just
     // consented to, and a reconnection has to be able to replace a revoked one.
     additionalParams: { access_type: "offline", prompt: "consent" },
-    callbackURL: "/?sheets=connected",
-    errorCallbackURL: "/?sheets=denied",
+    callbackURL: "/dashboard?sheets=connected",
+    errorCallbackURL: "/dashboard?sheets=denied",
   });
 }
 

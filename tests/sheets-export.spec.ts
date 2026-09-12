@@ -33,13 +33,13 @@ test.afterAll(async () => {
   await googleAnswers();
   await resetClock();
 });
-// Every export starts from the overview the owner sees, on the week of Monday
+// Every export starts from the dashboard the owner sees, on the week of Monday
 // 2026-09-07 through Sunday 2026-09-13 in Mexico City.
 async function overview(page: Page) {
   await signIn(page);
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   await moveClockTo("2026-09-11T18:00:00Z");
-  await page.reload();
+  await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   return report(page);
 }
@@ -436,7 +436,7 @@ test("existing snapshots stay unchanged after corrections, deletion and category
   const dropped = entries.find(
     (row: { amount: string }) => row.amount === "45.00",
   );
-  await page.reload();
+  await page.goto("/");
   await page
     .getByRole("button", { name: `Edit Expense of MXN 300.00 on 2026-09-08` })
     .click();
@@ -457,7 +457,7 @@ test("existing snapshots stay unchanged after corrections, deletion and category
   await page.getByLabel("New name for Groceries").fill("Market");
   await page.getByRole("button", { name: "Save name", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Category renamed.");
-  await page.goto("/");
+  await page.goto("/dashboard");
 
   // The spreadsheet Google received is the same one; nothing was written back.
   const after = await createdSpreadsheets();
@@ -574,7 +574,7 @@ test("export requires the owner's own session and a same-origin JSON request", a
   expect(await createdSpreadsheets()).toHaveLength(0);
 });
 
-// Authorizing export from the overview, through the app's own controls.
+// Authorizing export from the dashboard, through the app's own controls.
 async function connectExport(page: Page) {
   await page.getByRole("button", { name: "Export to Google Sheets" }).click();
   await connectSheets(page);

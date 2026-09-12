@@ -133,6 +133,21 @@ const monthName = new Intl.DateTimeFormat("en-US", {
   month: "long",
   year: "numeric",
 });
+// Axis ticks name a period in the fewest characters that stay distinct across
+// one trend span: fourteen day numbers, twelve week starts, twelve months.
+const dayTick = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  day: "numeric",
+});
+const weekTick = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  day: "numeric",
+  month: "short",
+});
+const monthTick = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  month: "short",
+});
 // One descriptor per kind of summary period: how it reads, which days it
 // contains, how a step of exactly one period moves, and how it is labelled.
 // Every other place asks this map instead of testing the kind again.
@@ -145,6 +160,7 @@ export const periodKindDetails: Record<
     containing: (date: string) => Period;
     step: (start: string, direction: 1 | -1) => string;
     name: (period: Period) => string;
+    tick: (period: Period) => string;
   }
 > = {
   day: {
@@ -154,6 +170,7 @@ export const periodKindDetails: Record<
     containing: (date) => ({ start: date, end: date }),
     step: (start, direction) => addDays(start, direction),
     name: (period) => dayName.format(atNoon(period.start)),
+    tick: (period) => dayTick.format(atNoon(period.start)),
   },
   week: {
     label: "Week",
@@ -167,6 +184,7 @@ export const periodKindDetails: Record<
     step: (start, direction) => addDays(start, direction * 7),
     name: (period) =>
       `${boundaryName.format(atNoon(period.start))} – ${boundaryName.format(atNoon(period.end))}`,
+    tick: (period) => weekTick.format(atNoon(period.start)),
   },
   month: {
     label: "Month",
@@ -186,6 +204,7 @@ export const periodKindDetails: Record<
       return calendarDate(moved);
     },
     name: (period) => monthName.format(atNoon(period.start)),
+    tick: (period) => monthTick.format(atNoon(period.start)),
   },
 };
 export const periodKinds = Object.keys(periodKindDetails) as PeriodKind[];
@@ -206,6 +225,68 @@ export function shiftPeriod(kind: PeriodKind, date: string, direction: 1 | -1) {
 }
 export function periodLabel(kind: PeriodKind, period: Period) {
   return periodKindDetails[kind].name(period);
+}
+// A trend reads several consecutive summary periods at once. The span ends with
+// the period the selection resolves to, so the dashboard's charts and its
+// figures always describe the same calendar boundaries.
+export const trendLength: Record<PeriodKind, number> = {
+  day: 14,
+  week: 12,
+  month: 12,
+};
+export type TrendPoint = Period & {
+  label: string;
+  tick: string;
+  income: string;
+  expenses: string;
+  netChange: string;
+};
+// One spending group across a whole span, beside the same group across the span
+// immediately before it, so a category reads as rising or falling rather than as
+// a bare figure.
+export type TrendCategory = {
+  categoryId: string | null;
+  category: string;
+  amount: string;
+  previous: string;
+};
+export type Trend = SummaryRequest &
+  Period & {
+    today: string;
+    currency: "MXN";
+    length: number;
+    points: TrendPoint[];
+    previous: Period;
+    income: string;
+    expenses: string;
+    netChange: string;
+    previousIncome: string;
+    previousExpenses: string;
+    categories: TrendCategory[];
+  };
+// Past this many spending groups a chart stops being readable, so the remainder
+// is folded into one group rather than given more bars.
+export const trendCategoryLimit = 6;
+export const trendCategoryFold = "Other categories";
+// The consecutive periods a span covers, oldest first, ending with the period
+// containing the selected date.
+export function trendPeriods(kind: PeriodKind, date: string): Period[] {
+  const periods = [summaryPeriod(kind, date)];
+  while (periods.length < trendLength[kind])
+    periods.unshift(
+      summaryPeriod(kind, shiftPeriod(kind, periods[0].start, -1)),
+    );
+  return periods;
+}
+export function spanOf(periods: Period[]): Period {
+  return { start: periods[0].start, end: periods[periods.length - 1].end };
+}
+// The equally long span immediately before this one, which every comparison on
+// the dashboard is measured against.
+export function previousSpan(kind: PeriodKind, periods: Period[]): Period {
+  return spanOf(
+    trendPeriods(kind, shiftPeriod(kind, periods[0].start, -1)),
+  );
 }
 // The landing view, and the fallback for anything a request leaves out.
 export function currentWeek(today: string): SummaryRequest {
@@ -236,6 +317,24 @@ export function money(amount: string) {
   const negative = amount.startsWith("-");
   const [whole, fraction] = (negative ? amount.slice(1) : amount).split(".");
   return `${negative ? "-" : ""}MXN ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction}`;
+}
+// Axis ticks carry magnitude only; the tooltip and the table view beside every
+// chart carry the exact figure.
+export function compactAmount(amount: string) {
+  const negative = amount.startsWith("-");
+  const pesos = Number(negative ? amount.slice(1) : amount);
+  const [scale, suffix] =
+    pesos >= 1_000_000
+      ? [1_000_000, "M"]
+      : pesos >= 1_000
+        ? [1_000, "K"]
+        : [1, ""];
+  const scaled = pesos / scale;
+  const text =
+    suffix === "" || scaled >= 100
+      ? String(Math.round(scaled))
+      : scaled.toFixed(1).replace(/\.0$/, "");
+  return `${negative ? "-" : ""}${text}${suffix}`;
 }
 // Refunds are entered as positive amounts and presented as reductions.
 export function signedAmount(entry: { kind: string; amount: string }) {

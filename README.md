@@ -1,6 +1,8 @@
 # Finance Buddy
 
-A private personal finance journal. The private weekly overview records income, expenses, and refunds in MXN, with optional categories and notes, exact totals, and Mexico City movement dates.
+A private personal finance journal. It records income, expenses, and refunds in MXN, with optional categories and notes, exact totals, and Mexico City movement dates.
+
+Three signed-in pages share one period selection. The home page is the **entry registry**: the selected day, week, or month as a compact list of movements, with recording, correcting, and deleting. **Dashboard** carries the figures: that period's totals and spending by category, trend charts across the periods leading up to it, and both snapshot exports. **Categories** manages the income and expense lists. See `docs/adr/0006-separate-the-dashboard-from-the-entry-registry.md`.
 
 ## Tooling
 
@@ -101,15 +103,23 @@ References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installa
 
 Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Exports read this same summary and have their own sections below. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals. Correcting an entry's date moves it out of one period and into the other, and both are recomputed from the stored movements.
 
+## Trends
+
+`GET /api/journal/trends?kind=&date=` resolves a period exactly as the report does, and refuses an unresolvable one in the same words. It answers with the consecutive periods ending with that one: fourteen days, twelve weeks, or twelve months, each carrying its own income, expenses, and net change. Movements are placed into periods by the same Mexico City calendar boundaries a summary uses, so every point reconciles with the summary for that period and a refund reduces expenses in the period it was received.
+
+The same reply carries spending by category across the whole span beside the same categories across the equally long span immediately before it, along with both spans' totals. One statement reads both spans, so the comparison never mixes two snapshots of the journal. Past six spending groups the remainder folds into a single **Other categories** group that keeps its figures, so the groups still sum to the span's total expenses.
+
+The dashboard charts this reply and requests it together with the summary, accepting both or neither, so a chart and a figure on that page can never describe different periods. Every chart is drawn from plain elements rather than a charting dependency, ships a table of the same figures, and gives each mark an accessible name carrying its period and amount.
+
 ## PDF export snapshots
 
-**Export PDF** on the overview downloads a snapshot of the period on screen, never of the current period unless that is what is shown. `GET /api/journal/export?kind=&date=` resolves the same period as the report, reads one summary, and replies with `application/pdf` as an attachment. Nothing is stored: there is no public link, no hosted copy, no export history, and no synchronization. A failed generation reports an actionable retry and leaves the journal untouched.
+**Export PDF** on the dashboard downloads a snapshot of the period on screen, never of the current period unless that is what is shown. `GET /api/journal/export?kind=&date=` resolves the same period as the report, reads one summary, and replies with `application/pdf` as an attachment. Nothing is stored: there is no public link, no hosted copy, no export history, and no synchronization. A failed generation reports an actionable retry and leaves the journal untouched.
 
 The document names the period it covers and, separately, the export date in Mexico City time, which also appears in the filename `finance-buddy-<kind>-<start>-to-<end>-exported-<export date>.pdf`. It carries total income, total expenses after refunds, net change, the category breakdown including Uncategorized and archived categories, and every financial movement in the period with its date, type, signed amount, category, and note. Nothing is paginated away: long notes and names wrap, a note longer than a whole page carries on across pages, and the movement list continues with repeated column headings and page numbers. The report's fonts write the Latin-1 range, so any other character in a note or a category name is written as `?` rather than refusing the export. An empty period reports zero totals and no rows. A downloaded file is a snapshot: later corrections, deletions, renames, and archives never change it, and only a new export reflects them.
 
 ## Google Sheets export
 
-The overview carries **Export to Google Sheets** next to **Add entry** on phone and desktop. It exports the period currently on screen, so the spreadsheet covers exactly the day, week, or month whose totals are displayed.
+The dashboard carries **Export to Google Sheets** next to **Export PDF** on phone and desktop. It exports the period currently on screen, so the spreadsheet covers exactly the day, week, or month whose totals are displayed.
 
 Sign-in and export authorization are separate. Signing in never asks for file access; the first export that needs it offers **Connect Google Sheets export**, which asks Google for `drive.file` alone. Declining or revoking it leaves sign-in, the journal, categories, and every other operation untouched, and the control is offered again the next time an export runs.
 
