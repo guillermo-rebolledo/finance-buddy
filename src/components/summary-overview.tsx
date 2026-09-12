@@ -54,6 +54,9 @@ import {
 } from "@/components/ui/native-select";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 
+const exportFailed =
+  "The PDF could not be created, and your journal is unchanged. Retry the export.";
+
 export function SummaryOverview({ initial }: { initial: Summary | null }) {
   const [summary, setSummary] = useState(initial);
   // The period the controls ask for. A null date follows Mexico City's current
@@ -192,7 +195,13 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       const response = await fetch(`/api/journal/export?${query}`, {
         cache: "no-store",
       });
-      if (!response.ok) throw new Error();
+      if (!response.ok) {
+        // A refused export says why it was refused, so an expired session does
+        // not read as a document that failed to render.
+        const refusal = await response.json().catch(() => null);
+        setExportError(refusal?.error || exportFailed);
+        return;
+      }
       const name =
         /filename="([^"]+)"/.exec(
           response.headers.get("Content-Disposition") ?? "",
@@ -202,15 +211,15 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       link.href = address;
       link.download = name;
       link.click();
-      URL.revokeObjectURL(address);
+      // Released only after the download has started: revoking in the same task
+      // cancels it in some browsers.
+      setTimeout(() => URL.revokeObjectURL(address), 10000);
       setSuccess(`Downloaded ${name}.`);
       requestAnimationFrame(() =>
         document.getElementById("entry-status")?.focus(),
       );
     } catch {
-      setExportError(
-        "The PDF could not be created, and your journal is unchanged. Retry the export.",
-      );
+      setExportError(exportFailed);
     } finally {
       setExporting(false);
     }

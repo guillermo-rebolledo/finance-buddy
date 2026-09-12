@@ -20,15 +20,18 @@ import {
 export function reportFileName(summary: Summary) {
   return `finance-buddy-${summary.kind}-${summary.start}-to-${summary.end}-exported-${summary.today}.pdf`;
 }
-// The standard fonts write WinAnsi, which cannot carry every character a note or
-// a category name may hold. Anything outside it is marked rather than refused,
-// so an export never fails on text the journal accepted.
+// The standard fonts write WinAnsi: Latin-1 plus the typographic characters of
+// its upper block. A note or a category name may hold anything else, so the rest
+// is marked with a question mark rather than refused, and an export never fails
+// on text the journal accepted.
 function printable(text: string) {
-  return text.replace(/[^ -~ -ÿ–—‘’“”•€]/gu, "?");
+  return text.replace(/[^ -~ -ÿ‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ€]/gu, "?");
 }
 const page = { width: 595.28, height: 841.89, margin: 48 };
 const content = page.width - page.margin * 2;
+// One line of text, and the gap that separates one block or row from the next.
 const line = 13;
+const gap = 4;
 // Every entry column: where it starts, how wide it is, and whether its text is
 // aligned on the right the way amounts are read.
 const columns = [
@@ -38,12 +41,24 @@ const columns = [
   { header: "Category", x: 218, width: 110 },
   { header: "Note", x: 336, width: content - 336 },
 ];
+// A named figure sits on the left of its own line and its amount on the right.
+const nameColumn = { x: 0, width: content - 130 };
+const amountColumn = { x: content - 120, width: 120, right: true };
+type Cell = {
+  text: string;
+  x: number;
+  width: number;
+  right?: boolean;
+  font?: PDFFont;
+};
 
 export async function reportDocument(summary: Summary) {
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
   const label = periodLabel(summary.kind, summary);
+  // The date this snapshot was taken, which is not the period it covers.
+  const exported = summary.today;
   document.setTitle(`Finance Buddy — ${label}`);
   let sheet!: PDFPage;
   let y = 0;
@@ -95,12 +110,12 @@ export async function reportDocument(summary: Summary) {
       right?: boolean;
     } = {},
   ) {
-    for (const row of wrap(text, font, size, width)) {
-      sheet.drawText(row, {
+    for (const written of wrap(text, font, size, width)) {
+      sheet.drawText(written, {
         x:
           page.margin +
           x +
-          (right ? width - font.widthOfTextAtSize(row, size) : 0),
+          (right ? width - font.widthOfTextAtSize(written, size) : 0),
         y,
         size,
         font,
@@ -117,16 +132,37 @@ export async function reportDocument(summary: Summary) {
     keep(line * 3);
     y -= line / 2;
     draw(text, { size: 13, font: bold });
-    y -= 4;
+    y -= gap;
+  }
+  // One row of cells written side by side, each wrapped inside its own column.
+  // The row continues onto the next page a line at a time, so a note or a name
+  // longer than a whole page is carried over rather than drawn off the paper.
+  // Whatever a continued row needs repeated at the top of the new page, such as
+  // column headings, is written by `repeat`.
+  function row(cells: Cell[], size = 10, repeat?: () => void) {
+    const wrapped = cells.map((cell) =>
+      wrap(cell.text, cell.font ?? regular, size, cell.width),
+    );
+    const height = Math.max(...wrapped.map((lines) => lines.length));
+    for (let index = 0; index < height; index++) {
+      if (y - line < page.margin + line) {
+        addPage();
+        repeat?.();
+      }
+      const top = y;
+      cells.forEach((cell, column) => {
+        y = top;
+        if (wrapped[column][index])
+          draw(wrapped[column][index], { ...cell, size });
+      });
+      y = top - line;
+    }
   }
   function amountRow(name: string, amount: string) {
-    keep(line * 2);
-    const top = y;
-    draw(name, { width: content - 130 });
-    const bottom = y;
-    y = top;
-    draw(amount, { x: content - 120, width: 120, right: true });
-    y = Math.min(bottom, y);
+    row([
+      { ...nameColumn, text: name },
+      { ...amountColumn, text: amount },
+    ]);
   }
 
   addPage();
@@ -137,7 +173,7 @@ export async function reportDocument(summary: Summary) {
   draw(`Period covered: ${label} (${summary.start} to ${summary.end})`, {
     size: 11,
   });
-  draw(`Exported on ${summary.today} (Mexico City time)`, { size: 11 });
+  draw(`Exported on ${exported} (Mexico City time)`, { size: 11 });
   draw("All amounts in Mexican pesos (MXN).", { size: 11 });
 
   heading("Totals");
@@ -153,8 +189,20 @@ export async function reportDocument(summary: Summary) {
 
   heading(`Financial movements (${summary.entries.length})`);
   if (summary.entries.length) {
-    // The column headings repeat on every page the list continues onto.
-    let headed = 0;
+    // The column headings open the list and repeat on every page it continues
+    // onto, including in the middle of a row too tall for one page.
+    const headings = () => {
+      row(
+        columns.map((column) => ({
+          ...column,
+          text: column.header,
+          font: bold,
+        })),
+        9,
+      );
+      y -= 2;
+    };
+    headings();
     for (const entry of summary.entries) {
       const cells = [
         entry.date,
@@ -163,32 +211,12 @@ export async function reportDocument(summary: Summary) {
         entry.category,
         entry.note,
       ];
-      const height =
-        line *
-        Math.max(
-          ...cells.map(
-            (cell, index) =>
-              wrap(cell, regular, 9, columns[index].width).length,
-          ),
-        );
-      keep(height + line * 2);
-      if (headed !== document.getPageCount()) {
-        headed = document.getPageCount();
-        const top = y;
-        for (const column of columns) {
-          y = top;
-          draw(column.header, { ...column, size: 9, font: bold });
-        }
-        y = top - line - 2;
-      }
-      const top = y;
-      let bottom = y;
-      for (const [index, cell] of cells.entries()) {
-        y = top;
-        draw(cell, { ...columns[index], size: 9 });
-        bottom = Math.min(bottom, y);
-      }
-      y = bottom - 4;
+      row(
+        columns.map((column, index) => ({ ...column, text: cells[index] })),
+        9,
+        headings,
+      );
+      y -= gap;
     }
   } else draw("No financial movements in this period.");
 

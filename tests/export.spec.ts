@@ -222,6 +222,36 @@ test("a large period spans pages and truncates no record", async ({
   expect(snapshot.text.match(/MXN 1\.19\b/g)).toHaveLength(1);
 });
 
+test("a note longer than a page carries on across pages", async ({
+  page,
+}, testInfo) => {
+  await overview(page);
+  // The longest note the journal accepts, wrapped into the narrowest column.
+  const note =
+    `START ${"describing this purchase at length ".repeat(55)} END`.slice(
+      0,
+      2000,
+    );
+  await post(page, { amount: "60", note });
+  await page.reload();
+  const snapshot = await download(page);
+  await snapshot.file.saveAs(testInfo.outputPath(snapshot.name));
+  expect(Number(/Page 1 of (\d+)/.exec(snapshot.text)![1])).toBeGreaterThan(1);
+  // Both ends of the note are in the file, and its row keeps its headings.
+  expect(snapshot.text).toContain("START describing this purchase");
+  expect(snapshot.text.trimEnd()).toContain("END");
+  expect(snapshot.text.match(/Date Type Amount Category Note/g)!.length).toBe(
+    2,
+  );
+  // Read without the page furniture, the note is whole and in order.
+  const written = snapshot.text
+    .replace(/Page \d+ of \d+ /g, "")
+    .replace(/Date Type Amount Category Note /g, "");
+  expect(
+    written.slice(written.indexOf("START"), written.lastIndexOf("END") + 3),
+  ).toBe(note.replace(/\s+/g, " ").trim());
+});
+
 test("an existing snapshot is untouched by later corrections, deletions and renames", async ({
   page,
 }) => {
@@ -311,6 +341,17 @@ test("a failed export reports an actionable retry and changes nothing", async ({
     "The PDF could not be created, and your journal is unchanged. Retry the export.",
   );
   expect((await report(page)).entries).toHaveLength(1);
+  // A refusal reports what the server said rather than a failed rendering.
+  await page.unroute("**/api/journal/export**");
+  await page.route("**/api/journal/export**", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Workspace access required." }),
+    }),
+  );
+  await page.getByRole("button", { name: "Retry export" }).click();
+  await expect(alert).toContainText("Workspace access required.");
   await page.unroute("**/api/journal/export**");
   const started = page.waitForEvent("download");
   await page.getByRole("button", { name: "Retry export" }).click();

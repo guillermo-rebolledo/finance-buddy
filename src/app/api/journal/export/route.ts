@@ -1,5 +1,9 @@
-import { authorizeOwner, jsonError, privateHeaders } from "@/lib/access";
-import { mexicoToday, parseSummaryRequest } from "@/lib/financial";
+import {
+  authorizeOwner,
+  jsonError,
+  privateHeaders,
+  requestedPeriod,
+} from "@/lib/access";
 import { summarize } from "@/lib/journal";
 import { reportDocument, reportFileName } from "@/lib/report";
 export const dynamic = "force-dynamic";
@@ -10,16 +14,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const access = await authorizeOwner(request, false);
   if ("denied" in access) return access.denied;
-  const url = new URL(request.url);
-  const period = parseSummaryRequest(
-    url.searchParams.get("kind"),
-    url.searchParams.get("date"),
-    mexicoToday(),
-  );
-  if (!period)
-    return jsonError("Choose a day, week, or month with a valid date.", 400);
+  const requested = requestedPeriod(request);
+  if ("denied" in requested) return requested.denied;
   try {
-    const summary = await summarize(access.owner, period);
+    const summary = await summarize(access.owner, requested.period);
     const document = await reportDocument(summary);
     return new Response(document as BodyInit, {
       headers: {
