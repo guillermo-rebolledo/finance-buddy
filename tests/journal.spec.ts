@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { moveClockTo, resetClock, signIn } from "./helpers";
+import { choose, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
 import { centavos } from "../src/lib/financial";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
@@ -89,7 +89,7 @@ test("phone and desktop save optional fields, preserve invalid input, and recove
   await expect(page.getByLabel("Movement date", { exact: true })).toHaveValue(
     "2026-09-06",
   );
-  await page.getByLabel("Type", { exact: true }).selectOption("expense");
+  await choose(page, "Type", "Expense");
   await page.getByLabel("Amount (MXN)").fill("0.001");
   await page
     .getByLabel("Note (optional)")
@@ -107,7 +107,7 @@ test("phone and desktop save optional fields, preserve invalid input, and recove
     "aria-invalid",
     "false",
   );
-  await page.getByLabel("Type", { exact: true }).selectOption("expense");
+  await choose(page, "Type", "Expense");
   await page
     .getByLabel("Note (optional)")
     .fill("Coffee <script>literal</script>");
@@ -312,7 +312,7 @@ test("movement dates define Monday–Sunday membership and backdated success is 
   await post(page, { date: "2026-08-31", amount: "2" });
   await post(page, { date: "2026-09-06", amount: "3" });
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
-  await page.getByLabel("Type", { exact: true }).selectOption("expense");
+  await choose(page, "Type", "Expense");
   await page.getByLabel("Amount (MXN)").fill("100");
   await page.getByLabel("Movement date", { exact: true }).fill("2026-08-30");
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
@@ -351,12 +351,9 @@ test("refunds reduce expenses and totals without counting as income", async ({
     ).status(),
   ).toBe(200);
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
-  await page.getByLabel("Type", { exact: true }).selectOption("refund");
+  await choose(page, "Type", "Refund");
   expect(
-    await page
-      .getByLabel("Category (optional)")
-      .locator("option")
-      .allTextContents(),
+    await optionsOf(page, "Category (optional)"),
   ).toEqual([
     "Uncategorized",
     "Dining",
@@ -368,9 +365,7 @@ test("refunds reduce expenses and totals without counting as income", async ({
     "Transport",
     "Utilities",
   ]);
-  await page
-    .getByLabel("Category (optional)")
-    .selectOption({ label: "Groceries" });
+  await choose(page, "Category (optional)", "Groceries");
   await page.getByLabel("Amount (MXN)").fill("200");
   await page.getByRole("button", { name: "Save entry", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Entry saved.");
@@ -603,10 +598,8 @@ test("an open workspace and form follow Mexico City midnight", async ({
   await expect(
     page.getByText("2026-09-07 – 2026-09-13", { exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Type", { exact: true }).selectOption("income");
-  await page
-    .getByLabel("Category (optional)")
-    .selectOption({ label: "Salary" });
+  await choose(page, "Type", "Income");
+  await choose(page, "Category (optional)", "Salary");
   await page.getByLabel("Amount (MXN)").fill("100");
   // The form itself remains open over another midnight.
   await moveClockTo("2026-09-08T06:01:00Z");

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { moveClockTo, resetClock, signIn } from "./helpers";
+import { choose, moveClockTo, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -206,7 +206,7 @@ test("the dashboard charts the selected period's trend and the registry keeps on
   await history(page);
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
-  await page.getByLabel("Period", { exact: true }).selectOption("month");
+  await choose(page, "Period", "Month");
   await expect(page.getByRole("heading", { name: "This month" })).toBeVisible();
   // The period's own figures sit above the span that ends with it.
   const totals = page.getByRole("region", { name: "Period totals" });

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { moveClockTo, resetClock, signIn } from "./helpers";
+import { choose, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -92,12 +92,12 @@ test("an entry is corrected through the form and both periods it touches agree",
     page.getByRole("heading", { name: "Edit entry", level: 2 }),
   ).toBeVisible();
   // The form opens on the recorded values, not on empty fields.
-  await expect(page.getByLabel("Type", { exact: true })).toHaveValue("expense");
+  await expect(page.getByLabel("Type", { exact: true })).toHaveText("Expense");
   await expect(page.getByLabel("Amount (MXN)")).toHaveValue("1200.00");
   await expect(page.getByLabel("Movement date", { exact: true })).toHaveValue(
     "2026-09-01",
   );
-  await expect(page.getByLabel("Category (optional)")).toHaveValue(groceries);
+  await expect(page.getByLabel("Category (optional)")).toHaveText("Groceries");
   await expect(page.getByLabel("Note (optional)")).toHaveValue("Weekly shop");
   await page.screenshot({
     path: testInfo.outputPath("edit-entry.png"),
@@ -120,9 +120,7 @@ test("an entry is corrected through the form and both periods it touches agree",
   ).toContainText("today or earlier");
   // A valid correction moves the entry, its totals and its breakdown at once.
   await page.getByLabel("Movement date", { exact: true }).fill("2026-09-02");
-  await page
-    .getByLabel("Category (optional)")
-    .selectOption({ label: "Dining" });
+  await choose(page, "Category (optional)", "Dining");
   await page.getByLabel("Note (optional)").fill("Dinner out");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Entry updated.");
@@ -213,12 +211,11 @@ test("a correction keeps an archived category and refuses an incompatible one", 
   await page
     .getByRole("button", { name: "Edit Expense of MXN 450.00 on 2026-09-06" })
     .click();
-  await expect(page.getByLabel("Category (optional)")).toHaveValue(groceries);
+  await expect(page.getByLabel("Category (optional)")).toHaveText(
+    "Groceries (archived)",
+  );
   expect(
-    await page
-      .getByLabel("Category (optional)")
-      .locator("option")
-      .allTextContents(),
+    await optionsOf(page, "Category (optional)"),
   ).toEqual([
     "Uncategorized",
     "Groceries (archived)",
@@ -231,17 +228,15 @@ test("a correction keeps an archived category and refuses an incompatible one", 
     "Utilities",
   ]);
   // Replacing it permits an active compatible category or none at all.
-  await page
-    .getByLabel("Category (optional)")
-    .selectOption({ label: "Health" });
+  await choose(page, "Category (optional)", "Health");
   // Leaving the expense list clears the category; coming back offers it again.
-  await page.getByLabel("Type", { exact: true }).selectOption("income");
-  await expect(page.getByLabel("Category (optional)")).toHaveValue("");
-  await page.getByLabel("Type", { exact: true }).selectOption("expense");
-  await expect(page.getByLabel("Category (optional)")).toHaveValue(groceries);
-  await page
-    .getByLabel("Category (optional)")
-    .selectOption({ label: "Health" });
+  await choose(page, "Type", "Income");
+  await expect(page.getByLabel("Category (optional)")).toHaveText("Uncategorized");
+  await choose(page, "Type", "Expense");
+  await expect(page.getByLabel("Category (optional)")).toHaveText(
+    "Groceries (archived)",
+  );
+  await choose(page, "Category (optional)", "Health");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Entry updated.");
   expect((await report(page)).entries[0].category).toBe("Health");
@@ -283,13 +278,10 @@ test("a correction keeps an archived category and refuses an incompatible one", 
   await page
     .getByRole("button", { name: "Edit Refund of MXN 450.00 on 2026-09-06" })
     .click();
-  await page.getByLabel("Type", { exact: true }).selectOption("income");
-  await expect(page.getByLabel("Category (optional)")).toHaveValue("");
+  await choose(page, "Type", "Income");
+  await expect(page.getByLabel("Category (optional)")).toHaveText("Uncategorized");
   expect(
-    await page
-      .getByLabel("Category (optional)")
-      .locator("option")
-      .allTextContents(),
+    await optionsOf(page, "Category (optional)"),
   ).toEqual(["Uncategorized", "Freelance", "Other income", "Salary"]);
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Entry updated.");
@@ -438,7 +430,7 @@ test("a purchase and a refund in different months are each corrected accurately"
   expect((await report(page, september)).netChange).toBe("200.00");
   // Correct the purchase in its own month, through the app.
   await page.getByLabel("Jump to date").fill("2026-08-15");
-  await page.getByLabel("Period", { exact: true }).selectOption("month");
+  await choose(page, "Period", "Month");
   await expect(
     page.getByRole("heading", { name: "August 2026", level: 1 }),
   ).toBeVisible();

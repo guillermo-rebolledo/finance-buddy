@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@custom-variant dark (&:where(.dark, .dark *));
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -7,14 +9,14 @@
   --color-popover: var(--card);
   --color-popover-foreground: var(--foreground);
   --color-primary: var(--primary);
-  --color-primary-foreground: #fff;
+  --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--primary);
+  --color-secondary-foreground: var(--foreground);
   --color-muted: var(--secondary);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--secondary);
   --color-accent-foreground: var(--foreground);
-  --color-destructive: #a52e26;
+  --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--primary);
@@ -27,24 +29,146 @@
   --radius-md: 0.5rem;
   --radius-sm: 0.375rem;
 }
-:root {
+
+/* Every colour the app draws with is one of these variables. A colour scheme
+   is a set of values for them, chosen separately for light and dark mode: the
+   root element carries the chosen scheme for each mode, and whichever mode is
+   active reads its own. A scheme may also be applied to any element, which is
+   how the settings page previews one without switching to it. Sage is the
+   default for both modes. */
+:root,
+[data-light-scheme="sage"]:not(.dark) {
+  color-scheme: light;
   --background: #f7f7f2;
   --foreground: #26392f;
   --card: #fff;
   --primary: #315d46;
+  --primary-foreground: #fff;
   --secondary: #eaf0e7;
   --muted-foreground: #5d6c61;
   --border: #dbe1d8;
+  --destructive: #a52e26;
   /* Chart hues carry series identity, never magnitude. Income and expenses are
      one validated categorical pair; a gain and a loss are the two poles of one
      diverging pair. Both were checked for colour-vision separation against the
-     white card surface these charts are drawn on. */
+     white card surface these charts are drawn on. They belong to the mode, not
+     the scheme, so a series keeps its colour whichever scheme is chosen. */
   --chart-income: #2a78d6;
   --chart-expenses: #eb6834;
   --chart-gain: #2a78d6;
   --chart-loss: #e34948;
   --chart-grid: #e6e9e2;
 }
+[data-light-scheme="neutral"]:not(.dark) {
+  --background: #fafafa;
+  --foreground: #171717;
+  --card: #fff;
+  --primary: #262626;
+  --primary-foreground: #fafafa;
+  --secondary: #f2f2f2;
+  --muted-foreground: #666;
+  --border: #e3e3e3;
+  --chart-grid: #ececec;
+}
+[data-light-scheme="ocean"]:not(.dark) {
+  --background: #f5f8fb;
+  --foreground: #1d3048;
+  --card: #fff;
+  --primary: #25588f;
+  --primary-foreground: #fff;
+  --secondary: #e5eef7;
+  --muted-foreground: #566779;
+  --border: #d6e0ea;
+  --chart-grid: #e2e9f0;
+}
+[data-light-scheme="rose"]:not(.dark) {
+  --background: #fbf7f7;
+  --foreground: #44262c;
+  --card: #fff;
+  --primary: #9b3551;
+  --primary-foreground: #fff;
+  --secondary: #f6e8eb;
+  --muted-foreground: #7a5e64;
+  --border: #ecdade;
+  --chart-grid: #f0e5e7;
+}
+[data-light-scheme="amber"]:not(.dark) {
+  --background: #fbf8f1;
+  --foreground: #3d3020;
+  --card: #fff;
+  --primary: #8a5a12;
+  --primary-foreground: #fff;
+  --secondary: #f4ecdc;
+  --muted-foreground: #75674f;
+  --border: #e8dfcc;
+  --chart-grid: #eee7d8;
+}
+
+/* Dark surfaces lift the chart hues so each series keeps its contrast against
+   the card, while staying recognisably the same series. */
+.dark,
+.dark[data-dark-scheme="sage"] {
+  color-scheme: dark;
+  --background: #121814;
+  --foreground: #e3ebe4;
+  --card: #1a221d;
+  --primary: #8fc4a5;
+  --primary-foreground: #10231a;
+  --secondary: #243029;
+  --muted-foreground: #9aab9f;
+  --border: #2e3a33;
+  --destructive: #f0706a;
+  --chart-income: #5b9ded;
+  --chart-expenses: #f08a5d;
+  --chart-gain: #5b9ded;
+  --chart-loss: #f06f6d;
+  --chart-grid: #26312a;
+}
+.dark[data-dark-scheme="neutral"] {
+  --background: #0f0f0f;
+  --foreground: #f2f2f2;
+  --card: #1a1a1a;
+  --primary: #ededed;
+  --primary-foreground: #171717;
+  --secondary: #262626;
+  --muted-foreground: #a3a3a3;
+  --border: #2e2e2e;
+  --chart-grid: #262626;
+}
+.dark[data-dark-scheme="ocean"] {
+  --background: #0e1520;
+  --foreground: #e1e9f2;
+  --card: #152030;
+  --primary: #82b4e8;
+  --primary-foreground: #0c1a2b;
+  --secondary: #1f2d40;
+  --muted-foreground: #95a6b8;
+  --border: #2a3a4f;
+  --chart-grid: #223044;
+}
+.dark[data-dark-scheme="rose"] {
+  --background: #1a1214;
+  --foreground: #f0e3e6;
+  --card: #241a1d;
+  --primary: #eb9ab0;
+  --primary-foreground: #2b1118;
+  --secondary: #33242a;
+  --muted-foreground: #b39ca2;
+  --border: #3d2c32;
+  --chart-grid: #33252a;
+}
+.dark[data-dark-scheme="amber"] {
+  --background: #17130d;
+  --foreground: #efe6d6;
+  --card: #211b13;
+  --primary: #e7b562;
+  --primary-foreground: #2a1d08;
+  --secondary: #2f271b;
+  --muted-foreground: #ae9f86;
+  --border: #3a3124;
+  --chart-grid: #2f281d;
+}
+
 @layer base {
   * {
     @apply border-border;

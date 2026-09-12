@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { ModeToggle } from "@/components/mode-toggle";
 import { BookOpen, LockKeyhole } from "lucide-react";
 export const dynamic = "force-dynamic";
 export default async function Login({
@@ -20,7 +21,7 @@ export default async function Login({
   const configured = !!getConfig();
   const failed = !!(await searchParams).error;
   return (
-    <main className="mx-auto flex min-h-svh max-w-5xl flex-col justify-center gap-12 px-6 py-12 md:flex-row md:items-center md:gap-20">
+    <main className="relative mx-auto flex min-h-svh max-w-5xl flex-col justify-center gap-12 px-6 py-12 md:flex-row md:items-center md:gap-20">
       <section className="flex flex-1 flex-col gap-6">
         <div className="flex items-center gap-3 text-sm font-semibold tracking-wide">
           <BookOpen aria-hidden="true" className="size-6 text-primary" />{" "}
@@ -74,6 +75,11 @@ export default async function Login({
           </p>
         </CardFooter>
       </Card>
+      {/* Last in reading order, so signing in stays the first stop for the
+          keyboard, though it is drawn in the corner. */}
+      <div className="absolute top-6 right-6">
+        <ModeToggle />
+      </div>
     </main>
   );
 }

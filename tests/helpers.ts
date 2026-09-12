@@ -187,3 +187,28 @@ export function pdfLines(file: Buffer) {
 export function pdfText(file: Buffer) {
   return pdfLines(file).join(" ").replace(/\s+/g, " ");
 }
+// Choices are listboxes rather than native selects, so a choice is made the way
+// a person makes it: open the list by its label, then pick an option by name.
+export async function choose(
+  page: import("@playwright/test").Page,
+  label: string,
+  option: string,
+) {
+  await page.getByLabel(label, { exact: true }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+}
+// The options a list offers, in order, read from the open list and closed again
+// without changing the choice.
+export async function optionsOf(
+  page: import("@playwright/test").Page,
+  label: string,
+) {
+  await page.getByLabel(label, { exact: true }).click();
+  const options = page.getByRole("option");
+  await expect(options.first()).toBeVisible();
+  const names = await options.allTextContents();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  return names;
+}
