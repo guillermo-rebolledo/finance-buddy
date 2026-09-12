@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { database, seedCategories } from "./journal";
+import { database } from "./database";
+import { seedCategories } from "./journal";
 import {
   categoryKinds,
   categoryMissing,

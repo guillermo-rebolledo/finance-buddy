@@ -44,10 +44,13 @@ export function CategoryManager({
   const [error, setError] = useState("");
   const [invalidField, setInvalidField] =
     useState<CategoryError["field"]>(null);
+  // The control the refused change came from, so only that name field is marked
+  // and a second form is never made to look at fault.
+  const [invalidKey, setInvalidKey] = useState("");
   const [success, setSuccess] = useState("");
   const [renaming, setRenaming] = useState("");
-  const [draft, setDraft] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, string>>({
+  const [renameDraft, setRenameDraft] = useState("");
+  const [newNames, setNewNames] = useState<Record<string, string>>({
     income: "",
     expense: "",
   });
@@ -66,20 +69,34 @@ export function CategoryManager({
       setLoading(false);
     }
   }
+  // One control per change, named by the change itself, so exactly the control
+  // the owner pressed reads as busy and only its own field is ever marked.
+  function changeKey(change: CategoryChange) {
+    return `${change.action}:${change.action === "create" ? change.kind : change.id}`;
+  }
+  function nameProps(key: string) {
+    const invalid = invalidField === "name" && invalidKey === key;
+    return {
+      "aria-invalid": invalid,
+      "aria-describedby": invalid ? "category-error" : undefined,
+    };
+  }
+  function refuse(failure: CategoryError, key: string) {
+    setError(failure.message);
+    setInvalidField(failure.field);
+    setInvalidKey(key);
+    requestAnimationFrame(() =>
+      document.getElementById("category-error")?.focus(),
+    );
+  }
   // Creating is the one change that is not idempotent; a retry after a lost
   // response is refused as a duplicate name rather than adding a second copy.
-  async function apply(change: CategoryChange, key: string) {
+  async function apply(change: CategoryChange) {
+    const key = changeKey(change);
     if (busy) return;
     setSuccess("");
     const invalid = validateCategoryChange(change);
-    if (invalid) {
-      setError(invalid.message);
-      setInvalidField(invalid.field);
-      requestAnimationFrame(() =>
-        document.getElementById("category-error")?.focus(),
-      );
-      return;
-    }
+    if (invalid) return refuse(invalid, key);
     setPending(key);
     setError("");
     setInvalidField(null);
@@ -90,24 +107,29 @@ export function CategoryManager({
         body: JSON.stringify(change),
       });
       const result = await response.json();
-      if (!response.ok) {
-        setInvalidField(result.field ?? null);
-        setError(
-          result.error || "The change could not be confirmed. Please retry it.",
+      if (!response.ok)
+        return refuse(
+          {
+            field: result.field ?? null,
+            message:
+              result.error ||
+              "The change could not be confirmed. Please retry it.",
+          },
+          key,
         );
-        requestAnimationFrame(() =>
-          document.getElementById("category-error")?.focus(),
-        );
-        return;
-      }
       if (change.action === "create")
-        setDrafts((current) => ({ ...current, [change.kind]: "" }));
+        setNewNames((current) => ({ ...current, [change.kind]: "" }));
       if (change.action === "rename") {
         setRenaming("");
-        setDraft("");
+        setRenameDraft("");
       }
       setSuccess(categoryActionDetails[change.action].done);
       await load();
+      // The control just pressed is gone: a renamed row left its form, an
+      // archived one moved lists. Focus lands on the outcome instead of the body.
+      requestAnimationFrame(() =>
+        document.getElementById("category-status")?.focus(),
+      );
     } catch {
       setError("The change could not be confirmed. Please retry it.");
     } finally {
@@ -116,14 +138,14 @@ export function CategoryManager({
   }
   function control(action: "archive" | "restore", category: ManagedCategory) {
     const detail = categoryActionDetails[action];
-    const key = `${action}:${category.id}`;
+    const key = changeKey({ action, id: category.id });
     return (
       <Button
         variant="outline"
         size="sm"
         aria-label={`${detail.label} ${category.name}`}
         disabled={busy}
-        onClick={() => apply({ action, id: category.id }, key)}
+        onClick={() => apply({ action, id: category.id })}
       >
         {pending === key ? detail.pending : detail.label}
       </Button>
@@ -144,7 +166,11 @@ export function CategoryManager({
           the category exactly as recorded.
         </p>
       </div>
-      {success && <p role="status">{success}</p>}
+      {success && (
+        <p role="status" id="category-status" tabIndex={-1}>
+          {success}
+        </p>
+      )}
       {error && (
         <Alert variant="destructive" id="category-error" tabIndex={-1}>
           <AlertTitle>Change needs attention</AlertTitle>
@@ -188,14 +214,11 @@ export function CategoryManager({
                               className="flex flex-wrap items-end gap-3"
                               onSubmit={(event) => {
                                 event.preventDefault();
-                                apply(
-                                  {
-                                    action: "rename",
-                                    id: category.id,
-                                    name: draft,
-                                  },
-                                  `rename:${category.id}`,
-                                );
+                                apply({
+                                  action: "rename",
+                                  id: category.id,
+                                  name: renameDraft,
+                                });
                               }}
                             >
                               <Field className="w-full max-w-xs">
@@ -205,16 +228,11 @@ export function CategoryManager({
                                 <Input
                                   id={`rename-${category.id}`}
                                   autoFocus
-                                  value={draft}
+                                  value={renameDraft}
                                   maxLength={categoryNameLimit}
-                                  aria-invalid={invalidField === "name"}
-                                  aria-describedby={
-                                    invalidField === "name"
-                                      ? "category-error"
-                                      : undefined
-                                  }
+                                  {...nameProps(`rename:${category.id}`)}
                                   onChange={(event) =>
-                                    setDraft(event.target.value)
+                                    setRenameDraft(event.target.value)
                                   }
                                 />
                               </Field>
@@ -231,7 +249,7 @@ export function CategoryManager({
                                   disabled={busy}
                                   onClick={() => {
                                     setRenaming("");
-                                    setDraft("");
+                                    setRenameDraft("");
                                     setError("");
                                     setInvalidField(null);
                                   }}
@@ -253,7 +271,7 @@ export function CategoryManager({
                                   disabled={busy}
                                   onClick={() => {
                                     setRenaming(category.id);
-                                    setDraft(category.name);
+                                    setRenameDraft(category.name);
                                     setError("");
                                     setInvalidField(null);
                                     setSuccess("");
@@ -285,10 +303,7 @@ export function CategoryManager({
                     className="flex flex-wrap items-end gap-3 border-t pt-6"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      apply(
-                        { action: "create", kind, name: drafts[kind] },
-                        `create:${kind}`,
-                      );
+                      apply({ action: "create", kind, name: newNames[kind] });
                     }}
                   >
                     <Field className="w-full max-w-xs">
@@ -297,15 +312,12 @@ export function CategoryManager({
                       </FieldLabel>
                       <Input
                         id={`new-${kind}`}
-                        value={drafts[kind]}
+                        value={newNames[kind]}
                         maxLength={categoryNameLimit}
                         placeholder={`Up to ${categoryNameLimit} characters`}
-                        aria-invalid={invalidField === "name"}
-                        aria-describedby={
-                          invalidField === "name" ? "category-error" : undefined
-                        }
+                        {...nameProps(`create:${kind}`)}
                         onChange={(event) =>
-                          setDrafts((current) => ({
+                          setNewNames((current) => ({
                             ...current,
                             [kind]: event.target.value,
                           }))

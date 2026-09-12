@@ -123,6 +123,21 @@ test("names are bounded and duplicates are refused consistently", async ({
     page.getByRole("alert").filter({ hasText: "Change needs attention" }),
   ).toContainText("1 to 40 characters");
   expect(await lists(page).then((l) => l.expense)).toHaveLength(8);
+  // Only the field the change came from is marked, and the other list's field is
+  // left alone.
+  await expect(page.getByLabel("New expense category")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await expect(page.getByLabel("New income category")).toHaveAttribute(
+    "aria-invalid",
+    "false",
+  );
+  await page.getByLabel("New expense category").fill("Travel");
+  await page.getByRole("button", { name: "Add expense category" }).click();
+  await expect(page.getByRole("status")).toHaveText("Category added.");
+  // The pressed control is gone, so focus lands on the outcome, not the body.
+  await expect(page.getByRole("status")).toBeFocused();
   for (const name of [
     "",
     "   ",
@@ -149,11 +164,6 @@ test("names are bounded and duplicates are refused consistently", async ({
   expect((await change(page, { action: "create", name: "A" })).status()).toBe(
     400,
   );
-  expect(
-    (
-      await change(page, { action: "create", kind: "expense", name: "Travel" })
-    ).status(),
-  ).toBe(200);
   // Duplicates are refused case-insensitively within one list, and the same
   // name may exist in the other list.
   const duplicate = await change(page, {
@@ -264,6 +274,17 @@ test("archiving preserves history and restoring reuses the same category", async
     { categoryId: dining.id, category: "Dining", amount: "300.00" },
   ]);
   expect((await post(page, { categoryId: dining.id })).status()).toBe(400);
+  // The entry form on the overview offers exactly the active categories.
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("button", { name: "Add entry", exact: true }).click();
+  await page.getByLabel("Type", { exact: true }).selectOption("expense");
+  expect(
+    await page
+      .getByLabel("Category (optional)")
+      .locator("option")
+      .allTextContents(),
+  ).not.toContain("Dining");
+  await page.getByRole("link", { name: "Categories", exact: true }).click();
   await page
     .getByRole("button", { name: "Restore Dining", exact: true })
     .click();
@@ -275,6 +296,16 @@ test("archiving preserves history and restoring reuses the same category", async
   expect(
     restored.expense.find((c: { id: string }) => c.id === dining.id).active,
   ).toBe(true);
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("button", { name: "Add entry", exact: true }).click();
+  await page.getByLabel("Type", { exact: true }).selectOption("expense");
+  expect(
+    await page
+      .getByLabel("Category (optional)")
+      .locator("option")
+      .allTextContents(),
+  ).toContain("Dining");
+  await page.getByRole("link", { name: "Categories", exact: true }).click();
   expect((await post(page, { categoryId: dining.id })).status()).toBe(200);
   const after = await (await page.request.get("/api/journal")).json();
   expect(after.expenses).toBe("301.00");

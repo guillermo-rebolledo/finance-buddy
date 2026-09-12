@@ -2,24 +2,14 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAccess } from "@/lib/auth";
 import { AppHeader } from "@/components/app-header";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { WorkspaceUnavailable } from "@/components/workspace-unavailable";
 import { SummaryOverview } from "@/components/summary-overview";
 import { summarize } from "@/lib/journal";
 import { currentWeek, mexicoToday } from "@/lib/financial";
 export const dynamic = "force-dynamic";
 export default async function Home() {
   const access = await getAccess(await headers());
-  if (access.status === "unavailable")
-    return (
-      <main className="mx-auto max-w-lg px-6 py-24">
-        <Alert>
-          <AlertTitle>Workspace temporarily unavailable</AlertTitle>
-          <AlertDescription>
-            We could not open your workspace. Please try again shortly.
-          </AlertDescription>
-        </Alert>
-      </main>
-    );
+  if (access.status === "unavailable") return <WorkspaceUnavailable />;
   if (access.status !== "authorized") redirect("/login");
   // The current week stays the landing view; other periods load from here.
   const summary = await summarize(

@@ -13,14 +13,12 @@ export function AppHeader() {
         Finance Buddy
       </div>
       <nav aria-label="Sections" className="flex flex-wrap items-center gap-1">
-        {[
-          ["/", "Overview"],
-          ["/categories", "Categories"],
-        ].map(([href, label]) => (
-          <Button key={href} asChild variant="ghost">
-            <Link href={href}>{label}</Link>
-          </Button>
-        ))}
+        <Button asChild variant="ghost">
+          <Link href="/">Overview</Link>
+        </Button>
+        <Button asChild variant="ghost">
+          <Link href="/categories">Categories</Link>
+        </Button>
       </nav>
       <AuthButton action="signout" />
     </header>
