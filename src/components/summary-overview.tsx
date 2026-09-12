@@ -55,13 +55,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { SheetsExport } from "@/components/sheets-export";
 
-export function SummaryOverview({
-  initial,
-  sheetsNotice,
-}: {
-  initial: Summary | null;
-  sheetsNotice?: string;
-}) {
+export function SummaryOverview({ initial }: { initial: Summary | null }) {
   const [summary, setSummary] = useState(initial);
   // The period the controls ask for. A null date follows Mexico City's current
   // date, so an open page keeps resolving the current period across midnight
@@ -326,7 +320,6 @@ export function SummaryOverview({
               key={`${summary.kind}:${summary.start}`}
               summary={summary}
               disabled={loading || saving}
-              notice={sheetsNotice}
             />
           )}
         </div>

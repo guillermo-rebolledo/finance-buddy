@@ -18,6 +18,32 @@ Verified locally September 11, 2026 with Node 24, pnpm 10.29.2, a production Nex
 - **Ownership.** Unauthenticated export requests are refused with 401, cross-origin and non-JSON requests with 403, and invalid identifiers or unresolvable periods with 400. No spreadsheet is created in any of those cases.
 - Desktop and phone screenshots of the export result were inspected. Screenshots are generated under ignored `test-results/`.
 
+## Code review
+
+Reviewed against starting commit `9a79bf3`, using independent Standards and Spec reviewers.
+
+### Standards
+
+No documented-standard violations. Resolved findings:
+
+- A repeated submission of a finished export rebuilt the spreadsheet title from today's data, so the link could name a generation date the spreadsheet does not carry. The title is now built from the export's own stored date, and a repeated submission returns exactly what the first one returned.
+- A lost response cleared the export identifier in the browser, so the next press would have created a second spreadsheet. The identifier is now kept, and retrying it either returns the finished spreadsheet or reports that the earlier attempt was never confirmed.
+- The refusal response was assembled twice in the route; one helper now shapes every refusal.
+- The browser Better Auth client was created twice; sign-in, sign-out and export authorization now share one.
+- The connection notice was threaded through two components as a forwarded prop; the component that renders it now reads it where Google's callback left it.
+- The unused spreadsheet identifier column was dropped, and the export's period is taken from the summary it already resolved instead of being derived a second time.
+
+### Spec
+
+Three findings resolved, one accepted as recorded.
+
+- A failure after the spreadsheet was created (an unreadable reply, or a failed write of the resulting link) reported that nothing was created and invited a retry. Those paths now mark the export unconfirmed, so no second spreadsheet is created and the owner is told to check Google Drive.
+- A Google 5xx was treated as "created nothing" and allowed a retry under the same identifier. Only refusals that precede creation are retried as themselves now; a provider failure marks the export unconfirmed.
+- The spreadsheet title on a repeated submission, as above.
+- Accepted: an unavailable workspace surfaces as a reconnect prompt. Every export request proves a live database-backed session first, so a database outage is refused with 503 before export authorization is consulted.
+
+Standards: 6 findings resolved, no outstanding hard violations. Spec: 3 findings resolved, no outstanding implementation findings; the live Google check remains blocked as recorded below.
+
 ## Deployment
 
 Apply `pnpm db:migrate` to the target database before deploying this change; builds and application startup do not run migrations. No production data was read or modified for tests.

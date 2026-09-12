@@ -1,10 +1,10 @@
 "use client";
-import { createAuthClient } from "better-auth/react";
 import { useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { periodLabel, sheetsScope, type Summary } from "@/lib/financial";
+import { authClient as client } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-const client = createAuthClient();
 
 // Export authorization is asked for separately from sign-in, only when an export
 // needs it, and only for the files this app creates.
@@ -26,12 +26,13 @@ async function connect() {
 export function SheetsExport({
   summary,
   disabled,
-  notice,
 }: {
   summary: Summary;
   disabled: boolean;
-  notice?: string;
 }) {
+  // Connecting leaves the app and comes back, so the outcome of that round trip
+  // is read from where Google's callback left it.
+  const notice = useSearchParams().get("sheets");
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState<{ url: string; title: string } | null>(null);
   // A failure says how the next press continues: reconnect first, retry this
@@ -80,13 +81,15 @@ export function SheetsExport({
       attempt.current = "";
       setDone(result);
     } catch {
+      // The request left without an answer, so this export keeps its identifier:
+      // retrying it either returns the spreadsheet it finished or says it could
+      // not be confirmed, rather than creating a second one.
       setFailure({
         message:
-          "The export could not be confirmed. Check your Google Drive before exporting again.",
+          "The export could not be confirmed. Retry this same export; it will not create a second spreadsheet.",
         reconnect: false,
-        again: true,
+        again: false,
       });
-      attempt.current = "";
     } finally {
       setPending(false);
     }

@@ -10,7 +10,6 @@ CREATE TABLE spreadsheet_export (
   period_end date NOT NULL,
   export_date date NOT NULL,
   status text NOT NULL CHECK (status IN ('pending', 'complete', 'unconfirmed')),
-  spreadsheet_id text,
   spreadsheet_url text,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (owner_id, id),

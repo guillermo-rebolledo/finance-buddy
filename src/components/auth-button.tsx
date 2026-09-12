@@ -1,9 +1,8 @@
 "use client";
-import { createAuthClient } from "better-auth/react";
 import { useState } from "react";
+import { authClient as client } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-const client = createAuthClient();
 export function AuthButton({
   action,
   disabled = false,

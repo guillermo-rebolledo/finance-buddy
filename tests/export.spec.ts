@@ -287,9 +287,8 @@ test("each explicit export creates its own spreadsheet and a repeated submission
   expect(first.status()).toBe(200);
   const repeated = await exportRequest(page, { id });
   expect(repeated.status()).toBe(200);
-  expect(await repeated.json()).toMatchObject({
-    url: (await first.json()).url,
-  });
+  // The finished spreadsheet is returned as it was made, title and all.
+  expect(await repeated.json()).toEqual(await first.json());
   expect(await createdSpreadsheets()).toHaveLength(3);
   // That identifier belongs to its own period and never silently covers another.
   const moved = await exportRequest(page, { id, kind: "month" });
@@ -339,11 +338,18 @@ test("provider failures report actionably, keep the journal intact, and never du
     error: expect.stringContaining("Retry this same export"),
   });
   expect(await createdSpreadsheets()).toHaveLength(0);
-  await googleAnswers("failure");
-  expect((await exportRequest(page, { id })).status()).toBe(503);
   await googleAnswers();
   const retried = await exportRequest(page, { id });
   expect(retried.status()).toBe(200);
+  expect(await createdSpreadsheets()).toHaveLength(1);
+
+  // A provider failure could have created a spreadsheet the app never heard
+  // about, so that export is not retried into a second one.
+  await googleAnswers("failure");
+  const unknown = randomUUID();
+  expect((await exportRequest(page, { id: unknown })).status()).toBe(409);
+  await googleAnswers();
+  expect((await exportRequest(page, { id: unknown })).status()).toBe(409);
   expect(await createdSpreadsheets()).toHaveLength(1);
 
   // A revoked permission asks for reconnection and does not revoke app access.

@@ -5,8 +5,23 @@ import {
   parseSummaryRequest,
   uuidPattern,
 } from "@/lib/financial";
-import { exportSnapshot, reconnectRefusal } from "@/lib/sheets";
+import {
+  exportSnapshot,
+  reconnectRefusal,
+  type ExportRefusal,
+} from "@/lib/sheets";
 export const dynamic = "force-dynamic";
+
+// Every refusal reads the same way, and says whether Google has to be
+// authorized again before the owner tries once more.
+function refuse(refused: ExportRefusal) {
+  return Response.json(
+    refused.reconnect
+      ? { error: refused.message, reconnect: true }
+      : { error: refused.message },
+    { status: refused.status, headers: privateHeaders },
+  );
+}
 
 // Exporting is a write: it creates a spreadsheet in the owner's Google account
 // from the owner's own period. The session supplies the owner, the request
@@ -16,11 +31,7 @@ export async function POST(request: Request) {
   const access = await authorizeOwner(request, true);
   if ("denied" in access) return access.denied;
   const granted = await exportAccess(request.headers);
-  if (granted.status !== "authorized")
-    return Response.json(
-      { error: reconnectRefusal.message, reconnect: true },
-      { status: reconnectRefusal.status, headers: privateHeaders },
-    );
+  if (granted.status !== "authorized") return refuse(reconnectRefusal);
   try {
     const input = (await request.json().catch(() => null)) as {
       id?: unknown;
@@ -42,13 +53,7 @@ export async function POST(request: Request) {
       period,
       granted.accessToken,
     );
-    if ("refused" in result)
-      return Response.json(
-        result.refused.reconnect
-          ? { error: result.refused.message, reconnect: true }
-          : { error: result.refused.message },
-        { status: result.refused.status, headers: privateHeaders },
-      );
+    if ("refused" in result) return refuse(result.refused);
     return Response.json(result, { headers: privateHeaders });
   } catch {
     return jsonError(

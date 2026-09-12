@@ -5,7 +5,8 @@ import {
   entryKindDetail,
   periodLabel,
   signedAmount,
-  summaryPeriod,
+  type Period,
+  type PeriodKind,
   type Summary,
   type SummaryRequest,
 } from "./financial";
@@ -39,12 +40,19 @@ function sheet(title: string, rows: { values: unknown[] }[]) {
 // The spreadsheet carries the same figures as the summary on screen: the same
 // totals, the same category groups and the same rows, in MXN, with the period
 // it covers and the Mexico City date it was generated stated separately.
-export function snapshotTitle(summary: Summary) {
-  return `Finance Buddy: ${periodLabel(summary.kind, summary)} (exported ${summary.today})`;
+// The title names the period covered and, separately, the date the snapshot was
+// generated. A finished spreadsheet keeps the date it was created with, so the
+// title is always built from that export's own date and never from today's.
+export function snapshotTitle(
+  kind: PeriodKind,
+  period: Period,
+  exportDate: string,
+) {
+  return `Finance Buddy: ${periodLabel(kind, period)} (exported ${exportDate})`;
 }
 function snapshot(summary: Summary) {
   return {
-    properties: { title: snapshotTitle(summary) },
+    properties: { title: snapshotTitle(summary.kind, summary, summary.today) },
     sheets: [
       sheet("Summary", [
         { values: [heading("Finance Buddy snapshot")] },
@@ -123,6 +131,17 @@ const retryRefusal: ExportRefusal = {
     "Google could not complete the export. Nothing was created and your journal is unchanged. Retry this same export.",
 };
 
+// An export whose outcome the app cannot prove: the row keeps saying so, and
+// the owner is sent to look in Google Drive rather than exporting again blindly.
+async function unconfirmed(owner: string, id: string) {
+  await database()
+    .query(
+      "UPDATE spreadsheet_export SET status='unconfirmed' WHERE owner_id=$1 AND id=$2",
+      [owner, id],
+    )
+    .catch(() => {});
+  return { refused: unconfirmedRefusal };
+}
 // One explicit export creates one spreadsheet. The identifier the owner's
 // request carries claims a row first, so a repeated submission returns the
 // spreadsheet already finished rather than creating another, and an attempt
@@ -134,18 +153,18 @@ export async function exportSnapshot(
   accessToken: string,
 ): Promise<{ url: string; title: string } | { refused: ExportRefusal }> {
   const summary = await summarize(owner, request);
-  const period = summaryPeriod(request.kind, request.date);
   const claimed = await database().query(
     `INSERT INTO spreadsheet_export(id, owner_id, period_kind, period_start, period_end, export_date, status)
     VALUES ($1,$2,$3,$4::date,$5::date,$6::date,'pending') ON CONFLICT DO NOTHING RETURNING id`,
-    [id, owner, request.kind, period.start, period.end, summary.today],
+    [id, owner, request.kind, summary.start, summary.end, summary.today],
   );
   if (!claimed.rowCount) {
     const {
       rows: [existing],
     } = await database().query(
       `SELECT status, spreadsheet_url AS url, period_kind AS kind,
-        to_char(period_start,'YYYY-MM-DD') AS start, to_char(period_end,'YYYY-MM-DD') AS "end"
+        to_char(period_start,'YYYY-MM-DD') AS start, to_char(period_end,'YYYY-MM-DD') AS "end",
+        to_char(export_date,'YYYY-MM-DD') AS "exportDate"
       FROM spreadsheet_export WHERE owner_id=$1 AND id=$2`,
       [owner, id],
     );
@@ -154,8 +173,8 @@ export async function exportSnapshot(
     if (!existing) return { refused: retryRefusal };
     if (
       existing.kind !== request.kind ||
-      existing.start !== period.start ||
-      existing.end !== period.end
+      existing.start !== summary.start ||
+      existing.end !== summary.end
     )
       return {
         refused: {
@@ -166,7 +185,10 @@ export async function exportSnapshot(
       };
     // The same export, already finished: its own spreadsheet, not a new one.
     if (existing.status === "complete")
-      return { url: existing.url, title: snapshotTitle(summary) };
+      return {
+        url: existing.url,
+        title: snapshotTitle(existing.kind, existing, existing.exportDate),
+      };
     return { refused: unconfirmedRefusal };
   }
   let created;
@@ -182,17 +204,14 @@ export async function exportSnapshot(
       body: JSON.stringify(snapshot(summary)),
     });
   } catch {
-    // No reply at all: a spreadsheet may or may not exist, so this export is
-    // never retried into a second one.
-    await database().query(
-      "UPDATE spreadsheet_export SET status='unconfirmed' WHERE owner_id=$1 AND id=$2",
-      [owner, id],
-    );
-    return { refused: unconfirmedRefusal };
+    // No reply at all: a spreadsheet may or may not exist.
+    return unconfirmed(owner, id);
   }
   if (!created.ok) {
-    // Google answered and created nothing, so this export can be retried as
-    // itself.
+    // A provider failure may have created a spreadsheet the app never heard
+    // about, so that export is never retried into a second one. Every other
+    // refusal came before anything was created, and can be retried as itself.
+    if (created.status >= 500) return unconfirmed(owner, id);
     await database().query(
       "DELETE FROM spreadsheet_export WHERE owner_id=$1 AND id=$2",
       [owner, id],
@@ -204,20 +223,23 @@ export async function exportSnapshot(
           : retryRefusal,
     };
   }
-  const result = (await created.json()) as {
-    spreadsheetId?: string;
-    spreadsheetUrl?: string;
-  };
-  if (!result.spreadsheetId || !result.spreadsheetUrl) {
+  try {
+    const result = (await created.json()) as {
+      spreadsheetId?: string;
+      spreadsheetUrl?: string;
+    };
+    if (!result.spreadsheetUrl) throw new Error("No spreadsheet was named");
     await database().query(
-      "UPDATE spreadsheet_export SET status='unconfirmed' WHERE owner_id=$1 AND id=$2",
-      [owner, id],
+      "UPDATE spreadsheet_export SET status='complete', spreadsheet_url=$3 WHERE owner_id=$1 AND id=$2",
+      [owner, id, result.spreadsheetUrl],
     );
-    return { refused: unconfirmedRefusal };
+    return {
+      url: result.spreadsheetUrl,
+      title: snapshotTitle(summary.kind, summary, summary.today),
+    };
+  } catch {
+    // A spreadsheet exists but the app cannot prove which, so it says so
+    // instead of exporting again on its own.
+    return unconfirmed(owner, id);
   }
-  await database().query(
-    "UPDATE spreadsheet_export SET status='complete', spreadsheet_id=$3, spreadsheet_url=$4 WHERE owner_id=$1 AND id=$2",
-    [owner, id, result.spreadsheetId, result.spreadsheetUrl],
-  );
-  return { url: result.spreadsheetUrl, title: snapshotTitle(summary) };
 }
