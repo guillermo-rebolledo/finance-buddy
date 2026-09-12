@@ -83,7 +83,7 @@ pnpm test
 1. Link the `finance-buddy` Vercel project and select Next.js with Node 24.x. The committed pnpm version/lockfile select installation; build command is `pnpm build`.
 2. Provision Neon and configure the six environment variables for the target environment. Preview deployments should use a separate Neon branch/database, secret, and stable preview origin with its own registered Google callback.
 3. Apply migrations explicitly to that environment's database, using its direct Neon connection if preferred. Do not add migration commands to the Vercel build or startup scripts.
-4. Deploy. Open `/login`, sign in with the real verified owner, record income, an expense, and a refund, confirm the weekly figures persist after refresh, correct one entry's amount and date and delete another through the confirmation, then sign out and confirm private requests are refused. Try another Google identity and confirm denial. Check mobile and desktop.
+4. Deploy. Open `/login`, sign in with the real verified owner, record income, an expense, and a refund, confirm the weekly figures persist after refresh, correct one entry's amount and date and delete another through the confirmation, export the period as a PDF and open the downloaded file, then sign out and confirm private requests are refused. Try another Google identity and confirm denial. Check mobile and desktop.
 5. Record the deployment URL and results in `docs/verification.md`. Controlled Google tests do not establish real OAuth or Neon configuration.
 
 References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installation), [Better Auth Google](https://better-auth.com/docs/authentication/google), [PostgreSQL adapter](https://better-auth.com/docs/adapters/postgresql), [identity admission](https://better-auth.com/docs/concepts/users-accounts), [shadcn/ui](https://ui.shadcn.com/docs/components/radix/button).
@@ -98,7 +98,13 @@ References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installa
 
 `DELETE /api/journal` accepts `{ id }` and removes that entry permanently. There is no trash, restore, undo, or edit history. Deleting an entry that is not the owner's, or one already deleted, changes nothing and cannot recreate it. Category records and every other movement are untouched. Both methods require JSON and the configured Origin, and report a refusal as a `field` error exactly as saving does.
 
-Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Exports remain a separate issue. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals. Correcting an entry's date moves it out of one period and into the other, and both are recomputed from the stored movements.
+Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Google Sheets export remains a separate issue. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals. Correcting an entry's date moves it out of one period and into the other, and both are recomputed from the stored movements.
+
+## PDF export snapshots
+
+**Export PDF** on the overview downloads a snapshot of the period on screen, never of the current period unless that is what is shown. `GET /api/journal/export?kind=&date=` resolves the same period as the report, reads one summary, and replies with `application/pdf` as an attachment. Nothing is stored: there is no public link, no hosted copy, no export history, and no synchronization. A failed generation reports an actionable retry and leaves the journal untouched.
+
+The document names the period it covers and, separately, the export date in Mexico City time, which also appears in the filename `finance-buddy-<kind>-<start>-to-<end>-exported-<export date>.pdf`. It carries total income, total expenses after refunds, net change, the category breakdown including Uncategorized and archived categories, and every financial movement in the period with its date, type, signed amount, category, and note. Nothing is paginated away: long notes and names wrap, and the movement list continues across pages with repeated column headings and page numbers. An empty period reports zero totals and no rows. A downloaded file is a snapshot: later corrections, deletions, renames, and archives never change it, and only a new export reflects them.
 
 ## Category management
 
