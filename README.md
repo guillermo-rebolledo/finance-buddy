@@ -33,7 +33,9 @@ Missing/invalid configuration or database failures deny access and expose only g
 
 ## Migrations and local startup
 
-Apply migrations explicitly against the intended database **before** starting the configured app:
+Run `pnpm dev:local` to start local development. It is the default entry point for humans and agents: it creates `.env.local` from `.env.example` when missing, fails with the list of variables still empty, installs dependencies with `pnpm install --frozen-lockfile`, applies migrations, and then runs the dev server. Extra arguments pass through to `next dev`. The script (`scripts/dev.sh`) does not enforce the Node version from `.node-version`.
+
+The equivalent manual sequence applies migrations explicitly against the intended database **before** starting the configured app:
 
 ```sh
 pnpm db:migrate
