@@ -1,7 +1,9 @@
-import { jsonError, privateHeaders } from "@/lib/access";
+import { jsonError, privateHeaders, unsupportedBuild } from "@/lib/access";
 import { getAccess } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
+  const outdated = unsupportedBuild(request);
+  if (outdated) return outdated;
   const access = await getAccess(request.headers);
   if (access.status !== "authorized")
     return jsonError(

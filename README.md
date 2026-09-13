@@ -16,7 +16,7 @@ cp .env.example .env.local
 
 ## Private configuration
 
-Configure these six variables, and `GOOGLE_IOS_CLIENT_ID` when the iOS app signs in; none are `NEXT_PUBLIC_`:
+Configure these six variables, and the optional `GOOGLE_IOS_CLIENT_ID` and `MINIMUM_IOS_BUILD` when the iOS app is used; none are `NEXT_PUBLIC_`:
 
 | Variable               | Value                                                                                                     |
 | ---------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -27,6 +27,7 @@ Configure these six variables, and `GOOGLE_IOS_CLIENT_ID` when the iOS app signs
 | `GOOGLE_CLIENT_SECRET` | Matching Google OAuth client secret.                                                                      |
 | `PRIVATE_OWNER_EMAIL`  | The privately supplied owner address. Used only for admission/authorization, never as a record owner key. |
 | `GOOGLE_IOS_CLIENT_ID` | Optional. Google OAuth iOS client ID whose ID tokens native sign-in accepts beside the web client's.      |
+| `MINIMUM_IOS_BUILD`    | Optional. The oldest iOS app build served, such as `12`; older builds are asked to update.                |
 
 Create a Google OAuth **Web application** client, set the application origin, and register the exact callback `<BETTER_AUTH_URL>/api/auth/callback/google`. Local and deployment callbacks must be registered separately. Add the owner as a consent-screen test user if the Google project is in testing mode. Sign-in requests only basic identity scopes. Exporting additionally asks for `https://www.googleapis.com/auth/drive.file`, which reaches only the spreadsheets this app creates; enable the Google Sheets API and the Google Drive API on the same project and list that scope on the consent screen. No further environment variables are needed, and provider tokens stay server-side.
 
@@ -121,11 +122,15 @@ Every refusal from a private endpoint, and from the auth route itself, is JSON w
 | `reconnect_required`     | 403    | Google Sheets export must be authorized again before exporting.                                  |
 | `export_unconfirmed`     | 409    | An earlier attempt of this export was never confirmed; check Google Drive instead of retrying.  |
 | `export_period_mismatch` | 409    | This export identifier already covers a different period.                                        |
-| `upgrade_required`       | 426    | Reserved for requests from an app build older than the server supports.                          |
+| `upgrade_required`       | 426    | The app build named by the request is older than the server supports. Update the app.            |
 | `unavailable`            | 503    | Configuration or the database is unavailable. Retry later.                                       |
 | `not_confirmed`          | 503    | A write's outcome is unknown, or it did not complete. Retrying the same request is safe.         |
 
 The session reader keeps Better Auth's reply shape, answering `null` with 403 or 503 rather than a refusal body. Refusals Better Auth raises while completing a sign-in carry Better Auth's own error body.
+
+## App builds
+
+The iOS app names its build in an `X-Finance-Buddy-Build` header on every request. A build is one or more dot-separated whole numbers, the form an iOS bundle version takes, compared number by number, so `12.1` is newer than `12` and older than `13`. When `MINIMUM_IOS_BUILD` is set, `/api/private` and every private endpoint refuse a request whose build is older, or unreadable, with 426 and `upgrade_required`, before its session is checked and before anything is read or written. A request naming no build, as every web request does, and a server without the setting, are never affected. Sign-in and sign-out are not gated, so an outdated app can still reach its session. A `MINIMUM_IOS_BUILD` that is not a build number fails configuration closed like any other invalid variable.
 
 ## Trends
 

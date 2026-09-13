@@ -1,6 +1,6 @@
 import "server-only";
 import { getAccess } from "./auth";
-import { getConfig } from "./config";
+import { appBuild, buildAtLeast, getConfig } from "./config";
 import { mexicoToday, parseSummaryRequest } from "./financial";
 
 export const privateHeaders = { "Cache-Control": "private, no-store" };
@@ -32,9 +32,23 @@ export function jsonError(
     { status: refusalStatus[code], headers: privateHeaders },
   );
 }
+// An app build older than the server supports is asked to update before
+// anything is read or written. A request naming no build, like the web's, and
+// a server with no minimum are never affected; an unreadable build is old.
+export function unsupportedBuild(request: Request) {
+  const build = request.headers.get("x-finance-buddy-build");
+  const minimum = getConfig()?.minimumIosBuild;
+  if (build === null || !minimum) return null;
+  const named = appBuild(build.trim());
+  return named && buildAtLeast(named, minimum)
+    ? null
+    : jsonError("upgrade_required", "Update the app to keep using your journal.");
+}
 // Every private endpoint proves a live owner session; a write additionally
 // proves a same-origin JSON request before anything is read from its body.
 export async function authorizeOwner(request: Request, write: boolean) {
+  const outdated = unsupportedBuild(request);
+  if (outdated) return { denied: outdated };
   const access = await getAccess(request.headers);
   if (access.status !== "authorized")
     return { denied: jsonError(access.status, "Workspace access required.") };
