@@ -472,3 +472,65 @@ test("the page reports a failed load and phone layout stays within the viewport"
     page.getByRole("button", { name: "Archive Dining", exact: true }),
   ).toBeVisible();
 });
+
+test("a category created with its own identifier is created once, however often the creation is repeated", async ({
+  page,
+}) => {
+  await manage(page);
+  const id = randomUUID();
+  const create = { action: "create", kind: "expense", name: "Pets", id };
+  // A lost reply is retried as the same creation, and it still succeeds.
+  for (let attempt = 0; attempt < 3; attempt++)
+    expect((await change(page, create)).status()).toBe(200);
+  expect((await change(page, { ...create, name: "  Pets " })).status()).toBe(200);
+  expect(
+    (await lists(page)).expense.filter((c: { name: string }) => c.name === "Pets"),
+  ).toEqual([{ id, kind: "expense", name: "Pets", active: true }]);
+
+  // The identifier never becomes a different category.
+  for (const data of [
+    { ...create, name: "Vet" },
+    { ...create, kind: "income" },
+  ]) {
+    const refused = await change(page, data);
+    await expectRefusal(refused, "invalid_field", 400);
+    expect((await refused.json()).field).toBe("id");
+  }
+  for (const invalid of ["not-a-uuid", 42, null]) {
+    const refused = await change(page, { ...create, name: "Birds", id: invalid });
+    await expectRefusal(refused, "invalid_field", 400);
+    expect((await refused.json()).field).toBe("id");
+  }
+  // Someone else's identifier matches nothing and reveals nothing.
+  const foreignOwner = randomUUID(),
+    foreignCategory = randomUUID();
+  await pool.query(
+    'INSERT INTO "user"(id,name,email,"emailVerified","createdAt","updatedAt") VALUES ($1,$2,$3,true,now(),now())',
+    [foreignOwner, "Foreign", `${foreignOwner}@example.test`],
+  );
+  await pool.query(
+    "INSERT INTO category(id,owner_id,kind,name) VALUES ($1,$2,'expense','Private category')",
+    [foreignCategory, foreignOwner],
+  );
+  const foreign = await change(page, {
+    action: "create",
+    kind: "expense",
+    name: "Private category",
+    id: foreignCategory,
+  });
+  await expectRefusal(foreign, "invalid_field", 400);
+  expect((await foreign.json()).field).toBe("id");
+  // A fresh identifier cannot take a name that is already taken.
+  const taken = await change(page, { ...create, name: "pets", id: randomUUID() });
+  await expectRefusal(taken, "invalid_field", 400);
+  expect((await taken.json()).field).toBe("name");
+  // Without an identifier, creation is exactly as it was.
+  expect(
+    (await change(page, { action: "create", kind: "income", name: "Pets" })).status(),
+  ).toBe(200);
+
+  const current = await lists(page);
+  expect(current.expense.filter((c: { name: string }) => /pets/i.test(c.name))).toHaveLength(1);
+  expect(current.income.filter((c: { name: string }) => c.name === "Pets")).toHaveLength(1);
+  expect(JSON.stringify(current)).not.toMatch(/Vet|Birds|Private/);
+});

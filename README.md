@@ -162,7 +162,7 @@ Snapshots are copies, not synchronized views: correcting or deleting movements, 
 
 ## Category management
 
-The `/categories` page manages the separate income and expense lists, and is reached from the navigation drawer on every signed-in page. `GET /api/categories` returns both lists with each category's archived state. `POST /api/categories` accepts one change: `{ action: "create", kind, name }`, `{ action: "rename", id, name }`, or `{ action: "archive" | "restore", id }`. There is no merging, no conversion between lists, and no permanent deletion.
+The `/categories` page manages the separate income and expense lists, and is reached from the navigation drawer on every signed-in page. `GET /api/categories` returns both lists with each category's archived state. `POST /api/categories` accepts one change: `{ action: "create", kind, name }`, `{ action: "rename", id, name }`, or `{ action: "archive" | "restore", id }`. There is no merging, no conversion between lists, and no permanent deletion. A creation may carry its own UUID `id`, which makes it safe to retry: repeating it with the same list and name answers success without creating another category, while the same identifier with a different list or name, or an identifier that is not the owner's, is refused on `id`. Without an `id`, creation behaves as before and the server assigns one.
 
 A name is trimmed, holds 1 to 40 characters, carries no control characters, and is unique case-insensitively within one list, counting archived categories, so a taken name is restored or renamed rather than recreated (see `docs/adr/0005-bounded-category-names.md`). A database constraint and unique index enforce the same rules as request validation.
 

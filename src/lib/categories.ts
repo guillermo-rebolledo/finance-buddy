@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { database } from "./database";
 import { seedCategories } from "./journal";
 import {
+  categoryIdentifierTaken,
   categoryKinds,
   categoryMissing,
   categoryName,
@@ -38,10 +39,22 @@ export async function changeCategory(
   await seedCategories(owner);
   try {
     if (change.action === "create") {
-      await database().query(
-        "INSERT INTO category(id, owner_id, kind, name) VALUES ($1,$2,$3,$4)",
-        [randomUUID(), owner, change.kind, categoryName(change.name)],
+      // A creation claims its identifier first, whether the client named it or
+      // not. Repeating the same creation finds the category it already made;
+      // the identifier never becomes a different category, or anyone else's.
+      const id = change.id ?? randomUUID();
+      const name = categoryName(change.name);
+      const created = await database().query(
+        "INSERT INTO category(id, owner_id, kind, name) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING",
+        [id, owner, change.kind, name],
       );
+      if (created.rowCount) return;
+      const repeated = await database().query(
+        "SELECT 1 FROM category WHERE owner_id=$1 AND id=$2 AND kind=$3 AND name=$4",
+        [owner, id, change.kind, name],
+      );
+      if (!repeated.rowCount)
+        return { field: "id", message: categoryIdentifierTaken };
       return;
     }
     const changed =
