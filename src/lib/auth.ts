@@ -75,7 +75,7 @@ export function getAuth() {
 // A request presenting a bearer token is judged by that token alone: its
 // cookies are set aside, so an invalid token never falls back to a session
 // cookie sent with it.
-function presentedProof(headers: Headers) {
+export function presentedProof(headers: Headers) {
   if (!headers.has("authorization")) return headers;
   const bearerOnly = new Headers(headers);
   bearerOnly.delete("cookie");

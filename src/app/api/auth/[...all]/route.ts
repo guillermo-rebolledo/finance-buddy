@@ -1,6 +1,6 @@
 import { jsonError } from "@/lib/access";
 import { getConfig } from "@/lib/config";
-import { getAccess, getAuth } from "@/lib/auth";
+import { getAccess, getAuth, presentedProof } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -71,7 +71,19 @@ async function handle(request: Request) {
     );
   let response;
   try {
-    response = await auth.handler(request);
+    // A request presenting a bearer token is judged by it alone here too, so a
+    // cookie sent with an invalid token never reads or ends that session.
+    response = await auth.handler(
+      request.headers.has("authorization")
+        ? new Request(request.url, {
+            method: request.method,
+            headers: presentedProof(request.headers),
+            body: ["GET", "HEAD"].includes(request.method)
+              ? undefined
+              : await request.arrayBuffer(),
+          })
+        : request,
+    );
   } catch {
     return jsonError(
       "unavailable",

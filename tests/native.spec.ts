@@ -187,6 +187,22 @@ test("only the signed session token works as a bearer, and never with a cookie t
     "unauthenticated",
     401,
   );
+  // The auth operations judge a presented token the same way: the cookie sent
+  // with an invalid one neither reads nor ends its session.
+  expect(
+    await (
+      await nativeClient(altered)("/api/auth/get-session", { headers: { Cookie: cookie! } })
+    ).json(),
+  ).toBeNull();
+  await nativeClient(altered)("/api/auth/sign-out", {
+    method: "POST",
+    body: {},
+    headers: { Cookie: cookie! },
+  });
+  expect(
+    (await nativeClient()("/api/private", { headers: { Cookie: cookie! } })).status,
+  ).toBe(200);
+  expect((await nativeClient(bearer)("/api/private")).status).toBe(200);
 });
 
 test("native sign-in fails closed in a server without owner configuration", async () => {
