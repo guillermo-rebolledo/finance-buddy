@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { choose, entryRow, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
+import { choose, entryRow, expectRefusal, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
 import { centavos } from "../src/lib/financial";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
@@ -171,7 +171,7 @@ test("server rejects invalid amounts, dates, types and categories without changi
     1,
     null,
   ])
-    expect((await post(page, { amount })).status()).toBe(400);
+    await expectRefusal(await post(page, { amount }), "invalid_field", 400);
   for (const date of [
     "2026-09-07",
     "2026-02-30",
@@ -180,26 +180,36 @@ test("server rejects invalid amounts, dates, types and categories without changi
     "bad",
     null,
   ])
-    expect((await post(page, { date })).status()).toBe(400);
+    await expectRefusal(await post(page, { date }), "invalid_field", 400);
   for (const kind of ["transfer", "reimbursement", "", null])
-    expect((await post(page, { kind })).status()).toBe(400);
+    await expectRefusal(await post(page, { kind }), "invalid_field", 400);
   expect((await post(page, { note: "x".repeat(2001) })).status()).toBe(400);
   const salary = initial.categories.find(
     (category: { name: string }) => category.name === "Salary",
   );
   expect((await post(page, { categoryId: salary.id })).status()).toBe(400);
-  expect((await post(page, { categoryId: randomUUID() })).status()).toBe(400);
-  expect((await request.get("/api/journal")).status()).toBe(401);
-  expect((await request.post("/api/journal", { data: {} })).status()).toBe(401);
-  expect(
-    (
-      await page.request.post("/api/journal", {
-        headers: { Origin: "https://foreign.test" },
-        data: {},
-      })
-    ).status(),
-  ).toBe(403);
-  expect((await page.request.post("/api/journal", { data: {} })).status()).toBe(
+  await expectRefusal(
+    await post(page, { categoryId: randomUUID() }),
+    "invalid_field",
+    400,
+  );
+  await expectRefusal(await request.get("/api/journal"), "unauthenticated", 401);
+  await expectRefusal(
+    await request.post("/api/journal", { data: {} }),
+    "unauthenticated",
+    401,
+  );
+  await expectRefusal(
+    await page.request.post("/api/journal", {
+      headers: { Origin: "https://foreign.test" },
+      data: {},
+    }),
+    "request_not_allowed",
+    403,
+  );
+  await expectRefusal(
+    await page.request.post("/api/journal", { data: {} }),
+    "request_not_allowed",
     403,
   );
   const response = await page.request.get("/api/journal");
@@ -470,7 +480,7 @@ test("a standalone refund reduces only its own receipt period and keeps expense 
     date: "2026-09-09",
     categoryId: salary.id,
   });
-  expect(income.status()).toBe(400);
+  await expectRefusal(income, "invalid_field", 400);
   expect((await income.json()).field).toBe("categoryId");
   await pool.query("UPDATE category SET active=false WHERE id=$1", [
     groceries.id,
@@ -527,7 +537,13 @@ test("failed report loads show an error and retry instead of an empty period", a
     await expect(
       page.getByText("No entries in this period", { exact: true }),
     ).toHaveCount(0);
-    expect((await page.request.get("/api/journal")).status()).toBe(503);
+    await expectRefusal(
+      await page.request.get("/api/journal"),
+      "unavailable",
+      503,
+    );
+    // A write whose outcome cannot be confirmed says so, and is safe to retry.
+    await expectRefusal(await post(page), "not_confirmed", 503);
   } finally {
     await pool.query(
       "ALTER TABLE unavailable_financial_movement RENAME TO financial_movement",

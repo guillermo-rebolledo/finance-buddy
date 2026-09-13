@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { choose, moveClockTo, pdfText, resetClock, signIn } from "./helpers";
+import { choose, expectRefusal, moveClockTo, pdfText, resetClock, signIn } from "./helpers";
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
@@ -308,7 +308,7 @@ test("an export is refused without an owner session and to a stranger", async ({
   await overview(page);
   await post(page, { amount: "777", note: "Private note" });
   const anonymous = await request.get(`${origin}/api/journal/export`);
-  expect(anonymous.status()).toBe(401);
+  await expectRefusal(anonymous, "unauthenticated", 401);
   expect(anonymous.headers()["content-type"]).toContain("application/json");
   expect(await anonymous.text()).not.toContain("Private note");
   // A stranger's Google identity never becomes a session, so the export stays
@@ -318,12 +318,12 @@ test("an export is refused without an owner session and to a stranger", async ({
   await signIn(stranger, "stranger");
   await expect(stranger.getByText("Sign-in was not completed")).toBeVisible();
   const refused = await stranger.request.get("/api/journal/export");
-  expect(refused.status()).toBe(401);
+  await expectRefusal(refused, "unauthenticated", 401);
   expect(await refused.text()).not.toContain("Private note");
   await other.close();
   // An unresolvable period is refused before anything is read.
   const invalid = await page.request.get("/api/journal/export?kind=quarter");
-  expect(invalid.status()).toBe(400);
+  await expectRefusal(invalid, "invalid_period", 400);
   expect((await invalid.json()).error).toContain("day, week, or month");
 });
 

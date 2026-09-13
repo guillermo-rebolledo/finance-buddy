@@ -103,6 +103,27 @@ References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installa
 
 Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Exports read this same summary and have their own sections below. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals. Correcting an entry's date moves it out of one period and into the other, and both are recomputed from the stored movements.
 
+## Refusals
+
+Every refusal from a private endpoint, and from the auth route itself, is JSON with `error`, a human-readable message whose wording may change, and `code`, a stable identifier a client acts on instead. A field refusal also carries `field`, which is `null` when the body as a whole is unusable, and a Google Sheets export that needs authorization also carries `reconnect: true`. A code always travels with the same status:
+
+| Code                     | Status | Meaning                                                                                          |
+| ------------------------ | ------ | ------------------------------------------------------------------------------------------------ |
+| `unauthenticated`        | 401    | No live session. Sign in again.                                                                  |
+| `forbidden`              | 403    | The session's identity is not the configured owner.                                              |
+| `request_not_allowed`    | 403    | The request failed integrity checks: a missing or foreign Origin, or a write without JSON.       |
+| `not_found`              | 404    | The auth operation is not exposed.                                                               |
+| `invalid_period`         | 400    | The day, week, or month named by `kind` and `date` cannot be resolved.                           |
+| `invalid_field`          | 400    | The body was refused; `field` names the input at fault.                                          |
+| `reconnect_required`     | 403    | Google Sheets export must be authorized again before exporting.                                  |
+| `export_unconfirmed`     | 409    | An earlier attempt of this export was never confirmed; check Google Drive instead of retrying.  |
+| `export_period_mismatch` | 409    | This export identifier already covers a different period.                                        |
+| `upgrade_required`       | 426    | Reserved for requests from an app build older than the server supports.                          |
+| `unavailable`            | 503    | Configuration or the database is unavailable. Retry later.                                       |
+| `not_confirmed`          | 503    | A write's outcome is unknown, or it did not complete. Retrying the same request is safe.         |
+
+The session reader keeps Better Auth's reply shape, answering `null` with 403 or 503 rather than a refusal body. Refusals Better Auth raises while completing a sign-in carry Better Auth's own error body.
+
 ## Trends
 
 `GET /api/journal/trends?kind=&date=` resolves a period exactly as the report does, and refuses an unresolvable one in the same words. It answers with the consecutive periods ending with that one: fourteen days, twelve weeks, or twelve months, each carrying its own income, expenses, and net change. Movements are placed into periods by the same Mexico City calendar boundaries a summary uses, so every point reconciles with the summary for that period and a refund reduces expenses in the period it was received.

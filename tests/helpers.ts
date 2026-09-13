@@ -1,6 +1,16 @@
 import { inflateSync } from "node:zlib";
 import { readFile, writeFile } from "node:fs/promises";
 import { expect } from "@playwright/test";
+// A refusal is read the way a client reads it: its status and its stable code,
+// never the wording of its message.
+export async function expectRefusal(
+  response: import("@playwright/test").APIResponse,
+  code: string,
+  status: number,
+) {
+  expect(response.status()).toBe(status);
+  expect((await response.json()).code).toBe(code);
+}
 export async function signIn(
   page: import("@playwright/test").Page,
   identity = "owner",

@@ -1,14 +1,11 @@
+import { jsonError } from "@/lib/access";
 import { getConfig } from "@/lib/config";
 import { getAccess, getAuth } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 async function handle(request: Request) {
   const auth = getAuth();
-  if (!auth)
-    return Response.json(
-      { error: "Sign-in is not available yet." },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
+  if (!auth) return jsonError("unavailable", "Sign-in is not available yet.");
   const path = new URL(request.url).pathname.replace("/api/auth", "");
   // Expose only the auth operations used by this private shell.
   if (
@@ -22,7 +19,9 @@ async function handle(request: Request) {
       "/sign-out",
     ].includes(path)
   )
-    return new Response(null, { status: 404 });
+    return jsonError("not_found", "Not found.");
+  // The session reader keeps Better Auth's own reply shape, where null means
+  // no session, so its refusals carry no body a client could mistake for one.
   if (path === "/get-session") {
     const access = await getAccess(request.headers);
     if (access.status === "forbidden" || access.status === "unavailable")
@@ -35,14 +34,14 @@ async function handle(request: Request) {
     request.method === "POST" &&
     request.headers.get("origin") !== getConfig()?.origin
   ) {
-    return Response.json({ error: "Access denied." }, { status: 403 });
+    return jsonError("request_not_allowed", "Access denied.");
   }
   try {
     return await auth.handler(request);
   } catch {
-    return Response.json(
-      { error: "Sign-in could not be completed. Please try again." },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+    return jsonError(
+      "unavailable",
+      "Sign-in could not be completed. Please try again.",
     );
   }
 }

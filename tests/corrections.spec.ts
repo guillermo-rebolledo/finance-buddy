@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { choose, entryRow, entryAction, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
+import { choose, entryRow, entryAction, expectRefusal, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -238,7 +238,7 @@ test("a correction keeps an archived category and refuses an incompatible one", 
     amount: "450",
     categoryId: groceries,
   });
-  expect(refused.status()).toBe(400);
+  await expectRefusal(refused, "invalid_field", 400);
   expect((await refused.json()).field).toBe("categoryId");
   expect((await report(page)).entries[0].category).toBe("Health");
   // An income category never classifies an expense or a refund, and a foreign
@@ -333,7 +333,11 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
     { categoryId: groceries, category: "Groceries", amount: "300.00" },
   ]);
   // Deleting again cannot bring it back, and the journal is unchanged.
-  expect((await remove(page, { id: refundId })).status()).toBe(400);
+  await expectRefusal(
+    await remove(page, { id: refundId }),
+    "invalid_field",
+    400,
+  );
   expect((await report(page)).entries).toHaveLength(1);
   // The expense leaves the day, the week and the month together.
   await entryAction(page, "Delete", "Expense of MXN 300.00 on 2026-09-02");
@@ -480,9 +484,9 @@ test("corrections and deletions reach only the signed-in owner's entries", async
   );
   for (const id of [foreignEntry, randomUUID()]) {
     const refused = await edit(page, { id, amount: "1", note: "Stolen" });
-    expect(refused.status()).toBe(400);
+    await expectRefusal(refused, "invalid_field", 400);
     expect((await refused.json()).field).toBe("id");
-    expect((await remove(page, { id })).status()).toBe(400);
+    await expectRefusal(await remove(page, { id }), "invalid_field", 400);
   }
   expect(
     (
@@ -503,9 +507,9 @@ test("corrections and deletions reach only the signed-in owner's entries", async
     { id: mine, amount: "1", categoryId: "not-a-uuid" },
     { id: mine, amount: "1", categoryId: category(initial, "Salary") },
   ])
-    expect((await edit(page, data)).status()).toBe(400);
+    await expectRefusal(await edit(page, data), "invalid_field", 400);
   for (const data of [{}, { id: 42 }, { id: null }])
-    expect((await remove(page, data)).status()).toBe(400);
+    await expectRefusal(await remove(page, data), "invalid_field", 400);
   expect(await report(page)).toEqual({
     ...initial,
     entries: [

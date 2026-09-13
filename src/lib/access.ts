@@ -4,14 +4,32 @@ import { getConfig } from "./config";
 import { mexicoToday, parseSummaryRequest } from "./financial";
 
 export const privateHeaders = { "Cache-Control": "private, no-store" };
+// Every refusal names a stable code a client can act on without reading its
+// message, whose wording stays free to change. Each code always travels with
+// the same status, so the two can never disagree.
+export const refusalStatus = {
+  unauthenticated: 401,
+  forbidden: 403,
+  request_not_allowed: 403,
+  not_found: 404,
+  invalid_period: 400,
+  invalid_field: 400,
+  reconnect_required: 403,
+  export_unconfirmed: 409,
+  export_period_mismatch: 409,
+  upgrade_required: 426,
+  unavailable: 503,
+  not_confirmed: 503,
+} as const;
+export type RefusalCode = keyof typeof refusalStatus;
 export function jsonError(
+  code: RefusalCode,
   message: string,
-  status: number,
-  field?: string | null,
+  detail: { field?: string | null; reconnect?: true } = {},
 ) {
   return Response.json(
-    field === undefined ? { error: message } : { error: message, field },
-    { status, headers: privateHeaders },
+    { error: message, code, ...detail },
+    { status: refusalStatus[code], headers: privateHeaders },
   );
 }
 // Every private endpoint proves a live owner session; a write additionally
@@ -19,22 +37,13 @@ export function jsonError(
 export async function authorizeOwner(request: Request, write: boolean) {
   const access = await getAccess(request.headers);
   if (access.status !== "authorized")
-    return {
-      denied: jsonError(
-        "Workspace access required.",
-        access.status === "unavailable"
-          ? 503
-          : access.status === "forbidden"
-            ? 403
-            : 401,
-      ),
-    };
+    return { denied: jsonError(access.status, "Workspace access required.") };
   if (
     write &&
     (request.headers.get("origin") !== getConfig()?.origin ||
       !request.headers.get("content-type")?.startsWith("application/json"))
   )
-    return { denied: jsonError("Request not allowed.", 403) };
+    return { denied: jsonError("request_not_allowed", "Request not allowed.") };
   return { owner: access.userId };
 }
 // The report and its export resolve the requested period the same way, and
@@ -51,8 +60,8 @@ export function requestedPeriod(request: Request) {
     ? { period }
     : {
         denied: jsonError(
+          "invalid_period",
           "Choose a day, week, or month with a valid date.",
-          400,
         ),
       };
 }

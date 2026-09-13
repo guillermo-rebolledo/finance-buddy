@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       headers: privateHeaders,
     });
   } catch {
-    return jsonError("Could not load this period. Please retry.", 503);
+    return jsonError("unavailable", "Could not load this period. Please retry.");
   }
 }
 // Recording, correcting and deleting share the same session, request integrity,
@@ -44,10 +44,13 @@ async function change(
   try {
     const input = await request.json().catch(() => null);
     const refused = await apply(access.owner, input, mexicoToday());
-    if (refused) return jsonError(refused.message, 400, refused.field);
+    if (refused)
+      return jsonError("invalid_field", refused.message, {
+        field: refused.field,
+      });
     return Response.json({ saved: true }, { headers: privateHeaders });
   } catch {
-    return jsonError(unconfirmed, 503);
+    return jsonError("not_confirmed", unconfirmed);
   }
 }
 export function POST(request: Request) {

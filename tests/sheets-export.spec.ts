@@ -3,6 +3,7 @@ import {
   connectSheets,
   createdSpreadsheets,
   entryAction,
+  expectRefusal,
   forgetSpreadsheets,
   googleAnswers,
   moveClockTo,
@@ -298,7 +299,7 @@ test("each explicit export creates its own spreadsheet and a repeated submission
   expect(await createdSpreadsheets()).toHaveLength(3);
   // That identifier belongs to its own period and never silently covers another.
   const moved = await exportRequest(page, { id, kind: "month" });
-  expect(moved.status()).toBe(409);
+  await expectRefusal(moved, "export_period_mismatch", 409);
   expect(await moved.json()).toMatchObject({
     error: expect.stringContaining("different period"),
   });
@@ -339,7 +340,7 @@ test("provider failures report actionably, keep the journal intact, and never du
   await googleAnswers("quota");
   const id = randomUUID();
   const refused = await exportRequest(page, { id });
-  expect(refused.status()).toBe(503);
+  await expectRefusal(refused, "not_confirmed", 503);
   expect(await refused.json()).toMatchObject({
     error: expect.stringContaining("Retry this same export"),
   });
@@ -353,15 +354,23 @@ test("provider failures report actionably, keep the journal intact, and never du
   // about, so that export is not retried into a second one.
   await googleAnswers("failure");
   const unknown = randomUUID();
-  expect((await exportRequest(page, { id: unknown })).status()).toBe(409);
+  await expectRefusal(
+    await exportRequest(page, { id: unknown }),
+    "export_unconfirmed",
+    409,
+  );
   await googleAnswers();
-  expect((await exportRequest(page, { id: unknown })).status()).toBe(409);
+  await expectRefusal(
+    await exportRequest(page, { id: unknown }),
+    "export_unconfirmed",
+    409,
+  );
   expect(await createdSpreadsheets()).toHaveLength(1);
 
   // A revoked permission asks for reconnection and does not revoke app access.
   await googleAnswers("revoked");
   const revoked = await exportRequest(page, { id: randomUUID() });
-  expect(revoked.status()).toBe(403);
+  await expectRefusal(revoked, "reconnect_required", 403);
   expect(await revoked.json()).toMatchObject({ reconnect: true });
   await page.reload();
   await page.getByRole("button", { name: "Export to Google Sheets" }).click();
@@ -374,10 +383,10 @@ test("provider failures report actionably, keep the journal intact, and never du
   await googleAnswers("silent");
   const lost = randomUUID();
   const silent = await exportRequest(page, { id: lost });
-  expect(silent.status()).toBe(409);
+  await expectRefusal(silent, "export_unconfirmed", 409);
   await googleAnswers();
   const repeated = await exportRequest(page, { id: lost });
-  expect(repeated.status()).toBe(409);
+  await expectRefusal(repeated, "export_unconfirmed", 409);
   expect(await repeated.json()).toMatchObject({
     error: expect.stringContaining("Check your Google Drive"),
   });
@@ -407,7 +416,7 @@ test("an expired export token is refreshed, and a refused refresh asks for recon
 
   await googleAnswers("refresh-failed");
   const refused = await exportRequest(page, { id: randomUUID() });
-  expect(refused.status()).toBe(403);
+  await expectRefusal(refused, "reconnect_required", 403);
   expect(await refused.json()).toMatchObject({ reconnect: true });
   expect(await createdSpreadsheets()).toHaveLength(1);
   // Ordinary journal use is unaffected by a provider token it does not need.
@@ -551,7 +560,7 @@ test("export requires the owner's own session and a same-origin JSON request", a
       data: { id: randomUUID() },
     },
   );
-  expect(foreign.status()).toBe(403);
+  await expectRefusal(foreign, "request_not_allowed", 403);
   const form = await page.request.post(
     "/api/journal/spreadsheet?kind=week&date=2026-09-11",
     {
@@ -559,11 +568,20 @@ test("export requires the owner's own session and a same-origin JSON request", a
       data: JSON.stringify({ id: randomUUID() }),
     },
   );
-  expect(form.status()).toBe(403);
-  expect((await exportRequest(page, { id: "not-a-uuid" })).status()).toBe(400);
+  await expectRefusal(form, "request_not_allowed", 403);
+  await expectRefusal(
+    await exportRequest(page, { id: "not-a-uuid" }),
+    "invalid_field",
+    400,
+  );
   expect(
     (await exportRequest(page, { id: randomUUID(), kind: "fortnight" })).status(),
   ).toBe(400);
+  await expectRefusal(
+    await exportRequest(page, { id: randomUUID(), date: "2026-13-01" }),
+    "invalid_period",
+    400,
+  );
   expect(
     (
       await exportRequest(page, { id: randomUUID(), date: "2026-02-30" })

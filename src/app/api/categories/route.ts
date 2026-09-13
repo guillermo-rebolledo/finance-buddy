@@ -13,17 +13,24 @@ async function handle(request: Request, write: boolean) {
       });
     const input = await request.json().catch(() => null);
     const invalid = validateCategoryChange(input);
-    if (invalid) return jsonError(invalid.message, 400, invalid.field);
-    const failed = await changeCategory(access.owner, input as CategoryChange);
-    if (failed) return jsonError(failed.message, 400, failed.field);
+    const refused =
+      invalid ??
+      (await changeCategory(access.owner, input as CategoryChange));
+    if (refused)
+      return jsonError("invalid_field", refused.message, {
+        field: refused.field,
+      });
     return Response.json({ changed: true }, { headers: privateHeaders });
   } catch {
-    return jsonError(
-      write
-        ? "The change could not be confirmed. Please retry it."
-        : "Could not load your categories. Please retry.",
-      503,
-    );
+    return write
+      ? jsonError(
+          "not_confirmed",
+          "The change could not be confirmed. Please retry it.",
+        )
+      : jsonError(
+          "unavailable",
+          "Could not load your categories. Please retry.",
+        );
   }
 }
 export function GET(request: Request) {

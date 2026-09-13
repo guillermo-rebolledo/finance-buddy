@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import {
   choose,
   entryRow,
+  expectRefusal,
   goToSection,
   moveClockTo,
   optionsOf,
@@ -112,7 +113,11 @@ test("custom categories are created per list and become available to matching en
     (c: { name: string }) => c.name === "Dividends",
   );
   // Lists stay separate: an income category cannot classify an expense.
-  expect((await post(page, { categoryId: dividends.id })).status()).toBe(400);
+  await expectRefusal(
+    await post(page, { categoryId: dividends.id }),
+    "invalid_field",
+    400,
+  );
 });
 
 test("names are bounded and duplicates are refused consistently", async ({
@@ -173,7 +178,7 @@ test("names are bounded and duplicates are refused consistently", async ({
     kind: "expense",
     name: "travel",
   });
-  expect(duplicate.status()).toBe(400);
+  await expectRefusal(duplicate, "invalid_field", 400);
   expect((await duplicate.json()).field).toBe("name");
   expect(
     (
@@ -193,7 +198,7 @@ test("names are bounded and duplicates are refused consistently", async ({
     id: travel.id,
     name: "dining",
   });
-  expect(rename.status()).toBe(400);
+  await expectRefusal(rename, "invalid_field", 400);
   expect((await rename.json()).field).toBe("name");
   // Renaming a category to its own name is not a duplicate.
   expect(
@@ -397,7 +402,7 @@ test("category changes are scoped to the signed-in owner", async ({
     { action: "rename", id: randomUUID(), name: "Ghost" },
     { action: "archive", id: "not-a-uuid" },
   ])
-    expect((await change(page, data)).status()).toBe(400);
+    await expectRefusal(await change(page, data), "invalid_field", 400);
   expect(JSON.stringify(await lists(page))).not.toContain("Private");
   expect(
     (
@@ -406,21 +411,29 @@ test("category changes are scoped to the signed-in owner", async ({
       ])
     ).rows,
   ).toEqual([{ name: "Private category", active: true }]);
-  expect((await request.get("/api/categories")).status()).toBe(401);
-  expect((await request.post("/api/categories", { data: {} })).status()).toBe(
+  await expectRefusal(
+    await request.get("/api/categories"),
+    "unauthenticated",
     401,
   );
-  expect(
-    (
-      await page.request.post("/api/categories", {
-        headers: { Origin: "https://foreign.test" },
-        data: { action: "archive", id: mine.income[0].id },
-      })
-    ).status(),
-  ).toBe(403);
-  expect(
-    (await page.request.post("/api/categories", { data: {} })).status(),
-  ).toBe(403);
+  await expectRefusal(
+    await request.post("/api/categories", { data: {} }),
+    "unauthenticated",
+    401,
+  );
+  await expectRefusal(
+    await page.request.post("/api/categories", {
+      headers: { Origin: "https://foreign.test" },
+      data: { action: "archive", id: mine.income[0].id },
+    }),
+    "request_not_allowed",
+    403,
+  );
+  await expectRefusal(
+    await page.request.post("/api/categories", { data: {} }),
+    "request_not_allowed",
+    403,
+  );
   const response = await page.request.get("/api/categories");
   expect(response.headers()["cache-control"]).toContain("no-store");
   expect(await response.json()).toEqual(mine);
@@ -441,7 +454,16 @@ test("the page reports a failed load and phone layout stays within the viewport"
     await expect(
       page.getByRole("alert").filter({ hasText: "Categories unavailable" }),
     ).toBeVisible();
-    expect((await page.request.get("/api/categories")).status()).toBe(503);
+    await expectRefusal(
+      await page.request.get("/api/categories"),
+      "unavailable",
+      503,
+    );
+    await expectRefusal(
+      await change(page, { action: "create", kind: "expense", name: "Pets" }),
+      "not_confirmed",
+      503,
+    );
   } finally {
     await pool.query("ALTER TABLE unavailable_category RENAME TO category");
   }
