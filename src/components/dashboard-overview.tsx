@@ -12,6 +12,7 @@ import {
   PeriodUnavailable,
   usePeriodView,
 } from "@/components/period-view";
+import { PageHeader } from "@/components/page-header";
 import { ReportExport } from "@/components/report-export";
 import { SpendingTrends } from "@/components/spending-trends";
 
@@ -36,19 +37,16 @@ export function DashboardOverview({
     requestedLabel,
   } = usePeriodView(initial, true, "Your dashboard");
   return (
-    <main aria-busy={loading} className="flex flex-col gap-8 pb-16 pt-8 md:pt-14">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-            {title}
-          </h1>
-          <p className="text-muted-foreground">
-            {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
-          </p>
-          <p className="text-sm text-muted-foreground">Mexico City · MXN</p>
-        </div>
-        <ReportExport summary={summary} busy={loading} />
-      </div>
+    <main aria-busy={loading} className="@container/main flex flex-col gap-6 py-6 sm:gap-8 sm:py-10">
+      <PageHeader
+        title={title}
+        actions={<ReportExport summary={summary} busy={loading} />}
+      >
+        <p className="text-base tabular-nums">
+          {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
+        </p>
+        <p>Mexico City · MXN</p>
+      </PageHeader>
       <PeriodNavigation
         view={view}
         anchor={anchor}
@@ -66,7 +64,7 @@ export function DashboardOverview({
       )}
       {summary && (
         <>
-          <section aria-label="Period totals" className="grid gap-4 md:grid-cols-3">
+          <section aria-label="Period totals" className="grid gap-4 @xl/main:grid-cols-3">
             {[
               ["Total income", money(summary.income)],
               ["Total expenses", money(summary.expenses)],

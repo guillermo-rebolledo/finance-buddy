@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { choose, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
+import { choose, entryRow, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
 import { centavos } from "../src/lib/financial";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
@@ -382,7 +382,7 @@ test("refunds reduce expenses and totals without counting as income", async ({
   ).toBeVisible();
   await page.goto("/");
   await expect(
-    page.getByText("Refund · Groceries", { exact: true }),
+    entryRow(page, "Refund", "Groceries"),
   ).toBeVisible();
   await expect(page.getByText("-MXN 200.00", { exact: true })).toBeVisible();
   // An uncategorized refund reduces its own reporting group.
@@ -413,9 +413,7 @@ test("refunds reduce expenses and totals without counting as income", async ({
   // On the registry the reduction is presented once, by the entry itself; its
   // reporting group presents the same reduction on the dashboard.
   await expect(
-    page
-      .getByRole("listitem")
-      .filter({ hasText: "Refund · Uncategorized" })
+    entryRow(page, "Refund", "Uncategorized")
       .getByText("-MXN 100.00", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("-MXN 100.00", { exact: true })).toHaveCount(1);

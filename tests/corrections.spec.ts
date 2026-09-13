@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { choose, entryAction, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
+import { choose, entryRow, entryAction, notification, moveClockTo, optionsOf, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -119,7 +119,7 @@ test("an entry is corrected through the form and both periods it touches agree",
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(notification(page, "Entry updated.")).toBeVisible();
   await expect(
-    page.getByText("Expense · Dining", { exact: true }),
+    entryRow(page, "Expense", "Dining"),
   ).toBeVisible();
   await expect(
     page.getByText("MXN 999.99", { exact: true }).first(),
@@ -159,7 +159,7 @@ test("an entry is corrected through the form and both periods it touches agree",
   // The correction survives a refresh and is the same in another session.
   await page.reload();
   await expect(
-    page.getByText("Expense · Dining", { exact: true }),
+    entryRow(page, "Expense", "Dining"),
   ).toBeVisible();
   const second = await browser.newContext();
   const secondPage = await second.newPage();

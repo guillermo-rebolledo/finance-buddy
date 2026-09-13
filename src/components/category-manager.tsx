@@ -12,6 +12,7 @@ import {
   type CategoryLists,
   type ManagedCategory,
 } from "@/lib/financial";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -155,17 +156,14 @@ export function CategoryManager({
     (lists?.[kind] ?? []).filter((category) => !category.active),
   );
   return (
-    <main aria-busy={busy} className="flex flex-col gap-8 pb-16 pt-8 md:pt-14">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-          Categories
-        </h1>
-        <p className="text-muted-foreground">
+    <main aria-busy={busy} className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10">
+      <PageHeader title="Categories">
+        <p className="max-w-2xl">
           Add, rename, and archive the categories your entries choose from.
           Archiving is not deletion: past entries, totals, and breakdowns keep
           the category exactly as recorded.
         </p>
-      </div>
+      </PageHeader>
       {success && (
         <p role="status" id="category-status" tabIndex={-1}>
           {success}

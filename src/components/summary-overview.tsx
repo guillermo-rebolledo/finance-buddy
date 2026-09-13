@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { EllipsisIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { EllipsisIcon, PencilIcon, Plus, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import {
   entryKindDetail,
@@ -15,7 +15,9 @@ import {
   type EntryInput,
   type Summary,
 } from "@/lib/financial";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
 import {
   Card,
   CardHeader,
@@ -260,31 +262,35 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   return (
     <main
       aria-busy={loading}
-      className="flex flex-col gap-8 pb-16 pt-8 md:pt-14"
+      className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-4xl tracking-tight md:text-5xl">
-            {title}
-          </h1>
-          <p className="text-muted-foreground">
-            {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Mexico City · MXN ·{" "}
-            <Link className="underline" href="/dashboard">
-              Totals and trends
-            </Link>
-          </p>
-        </div>
-        <Button
-          size="lg"
-          disabled={!summary || loading || saving}
-          onClick={() => openForm(null)}
-        >
-          Add entry
-        </Button>
-      </div>
+      <PageHeader
+        title={title}
+        actions={
+          <Button
+            size="lg"
+            className="w-full sm:w-auto"
+            disabled={!summary || loading || saving}
+            onClick={() => openForm(null)}
+          >
+            <Plus aria-hidden="true" />
+            Add entry
+          </Button>
+        }
+      >
+        <p className="text-base tabular-nums">
+          {summary ? `${summary.start} – ${summary.end}` : "No period loaded"}
+        </p>
+        <p>
+          Mexico City · MXN ·{" "}
+          <Link
+            className="font-medium text-foreground underline underline-offset-4"
+            href="/dashboard"
+          >
+            Totals and trends
+          </Link>
+        </p>
+      </PageHeader>
       <PeriodNavigation
         view={view}
         anchor={anchor}
@@ -482,31 +488,47 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
               // its grid: what it is, when and why, how much, and its actions.
               <ul className="divide-y">
                 {summary.entries.map((entry) => (
-                  <li key={entry.id} className="flex items-center gap-3 py-2">
-                    <div className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:gap-3">
-                      <span className="truncate text-sm font-medium sm:w-48 sm:shrink-0">
-                        {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
-                        {entry.category}
-                      </span>
-                      <div className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground sm:text-sm">
-                        <time className="shrink-0 tabular-nums" dateTime={entry.date}>
+                  <li
+                    key={entry.id}
+                    className="flex items-start gap-2 py-3 first:pt-0 last:pb-0"
+                  >
+                    {/* What the entry is and how much leads; where it belongs,
+                        when it moved and why follow beneath it. */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-semibold">
+                          {entryKindDetail(entry.kind)?.label ?? entry.kind}
+                        </span>
+                        <span className="shrink-0 text-base font-semibold tabular-nums">
+                          {money(signedAmount(entry))}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <Badge variant="secondary" className="text-sm">
+                          {entry.category}
+                        </Badge>
+                        <time
+                          className="text-sm text-muted-foreground tabular-nums"
+                          dateTime={entry.date}
+                        >
                           {entry.date}
                         </time>
-                        {entry.note && (
-                          <span className="truncate" title={entry.note}>
-                            {entry.note}
-                          </span>
-                        )}
                       </div>
+                      {entry.note && (
+                        <p
+                          className="truncate text-sm text-muted-foreground"
+                          title={entry.note}
+                        >
+                          {entry.note}
+                        </p>
+                      )}
                     </div>
-                    <span className="shrink-0 text-sm font-medium tabular-nums">
-                      {money(signedAmount(entry))}
-                    </span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon-sm"
+                          className="-mt-1 -mr-2"
                           aria-label={`Actions for ${entryTitle(entry)}`}
                           disabled={loading || saving || deletingId !== ""}
                         >

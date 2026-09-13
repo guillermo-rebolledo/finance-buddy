@@ -228,3 +228,35 @@ export function notification(
 ) {
   return page.locator("[data-sonner-toast]").filter({ hasText: text });
 }
+// An entry row, found by what it is and where it belongs.
+export function entryRow(
+  page: import("@playwright/test").Page,
+  kind: string,
+  category: string,
+) {
+  return page
+    .getByRole("listitem")
+    .filter({ has: page.getByText(kind, { exact: true }) })
+    .filter({ has: page.getByText(category, { exact: true }) });
+}
+
+// On a phone the sections live in the navigation drawer, which the top bar
+// shows and hides; on desktop they are already on screen.
+export async function openNavigation(
+  page: import("@playwright/test").Page,
+  target: import("@playwright/test").Locator,
+) {
+  await expect(async () => {
+    if (await target.isVisible()) return;
+    await page.getByRole("button", { name: "Toggle navigation" }).click();
+    await expect(target).toBeVisible({ timeout: 1000 });
+  }).toPass();
+}
+export async function goToSection(
+  page: import("@playwright/test").Page,
+  name: string,
+) {
+  const link = page.getByRole("link", { name, exact: true });
+  await openNavigation(page, link);
+  await link.click();
+}

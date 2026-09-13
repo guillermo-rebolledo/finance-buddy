@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Monitor, Moon, Settings, Sun } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { type VariantProps } from "class-variance-authority";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,12 +24,18 @@ export const themeModes = [
 // A quick switch between light, dark and the device's own setting. Signed-in
 // pages also link to the full appearance settings from here. The menu only
 // renders once opened in the browser, where the stored mode is already known.
-export function ModeToggle({ withSettings = false }: { withSettings?: boolean }) {
+export function ModeToggle({
+  withSettings = false,
+  size = "icon-lg",
+}: {
+  withSettings?: boolean;
+  size?: VariantProps<typeof buttonVariants>["size"];
+}) {
   const { theme, setTheme } = useTheme();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon-lg" aria-label="Theme">
+        <Button variant="outline" size={size} aria-label="Theme">
           <Sun
             aria-hidden="true"
             className="scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90"
