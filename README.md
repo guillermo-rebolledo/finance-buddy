@@ -16,7 +16,7 @@ cp .env.example .env.local
 
 ## Private configuration
 
-Configure all six variables; none are `NEXT_PUBLIC_`:
+Configure these six variables, and `GOOGLE_IOS_CLIENT_ID` when the iOS app signs in; none are `NEXT_PUBLIC_`:
 
 | Variable               | Value                                                                                                     |
 | ---------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -26,8 +26,11 @@ Configure all six variables; none are `NEXT_PUBLIC_`:
 | `GOOGLE_CLIENT_ID`     | Google OAuth web client ID.                                                                               |
 | `GOOGLE_CLIENT_SECRET` | Matching Google OAuth client secret.                                                                      |
 | `PRIVATE_OWNER_EMAIL`  | The privately supplied owner address. Used only for admission/authorization, never as a record owner key. |
+| `GOOGLE_IOS_CLIENT_ID` | Optional. Google OAuth iOS client ID whose ID tokens native sign-in accepts beside the web client's.      |
 
 Create a Google OAuth **Web application** client, set the application origin, and register the exact callback `<BETTER_AUTH_URL>/api/auth/callback/google`. Local and deployment callbacks must be registered separately. Add the owner as a consent-screen test user if the Google project is in testing mode. Sign-in requests only basic identity scopes. Exporting additionally asks for `https://www.googleapis.com/auth/drive.file`, which reaches only the spreadsheets this app creates; enable the Google Sheets API and the Google Drive API on the same project and list that scope on the consent screen. No further environment variables are needed, and provider tokens stay server-side.
+
+The iOS app signs in natively instead of following Google's redirect. Create an **iOS** OAuth client in the same Google Cloud project and set its client ID as `GOOGLE_IOS_CLIENT_ID`. The app obtains a Google ID token from Google Sign-In for iOS, passing a fresh nonce, and posts `{ provider: "google", idToken: { token, nonce } }` to `/api/auth/sign-in/social` without an Origin header; a sign-in without the nonce is refused before the token is verified. The token is verified against Google for either the web or the iOS client ID, and admission is exactly the web's. The session comes back in the `set-auth-token` response header, which the app keeps in the Keychain and sends as `Authorization: Bearer <value>`; the `token` in the reply body is unsigned and is not accepted as a bearer token. A request presenting a bearer token is judged by that token alone, never by a cookie sent with it, and browsers never receive `set-auth-token`. Without `GOOGLE_IOS_CLIENT_ID`, tokens issued to the iOS client are refused and web sign-in is unaffected.
 
 All admitted identities must have a verified Google email matching the configured owner. Better Auth's stable `user.id` is the future record ownership key. Every protected request revalidates the database session and private-launch owner policy. Session cookies are HTTP-only, same-site, secure on HTTPS, and are not used as a cache of authorization. Sessions expire after seven days, subject to Better Auth's rolling refresh, and sign-out deletes the session.
 

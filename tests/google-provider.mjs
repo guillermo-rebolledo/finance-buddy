@@ -169,10 +169,26 @@ agent
   })
   .persist();
 writeFileSync(captureFile, "");
+// Tests sign the ID tokens a native client presents with keys of their own,
+// published here beside the fixture key exactly as Google publishes its keys.
+const nativeKeysFile = process.env.TEST_CLOCK_FILE + ".jwks";
+function nativeKeys() {
+  try {
+    return readFileSync(nativeKeysFile, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
 agent
   .get("https://www.googleapis.com")
   .intercept({ path: "/oauth2/v3/certs" })
-  .reply(200, { keys: [publicJwk] })
+  .reply(() => ({
+    statusCode: 200,
+    data: { keys: [publicJwk, ...nativeKeys()] },
+  }))
   .persist();
 
 // Move only the server clock, at the external time boundary, to test natural expiry.

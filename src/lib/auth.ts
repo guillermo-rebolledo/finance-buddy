@@ -1,5 +1,6 @@
 import "server-only";
 import { betterAuth } from "better-auth";
+import { bearer } from "better-auth/plugins";
 import { Pool } from "pg";
 import { getConfig } from "./config";
 import { sheetsScope } from "./financial";
@@ -27,7 +28,7 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
     emailAndPassword: { enabled: false },
     socialProviders: {
       google: {
-        clientId: config.googleClientId,
+        clientId: config.googleClientIds,
         clientSecret: config.googleClientSecret,
         prompt: "select_account",
         requireEmailVerification: true,
@@ -58,6 +59,9 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
       },
     },
     session: { expiresIn: 60 * 60 * 24 * 7, cookieCache: { enabled: false } },
+    // The iOS app presents its session as a bearer token. Only the signed form
+    // is accepted, so the raw token stored in a session row is not enough.
+    plugins: [bearer({ requireSignature: true })],
     onAPIError: { errorURL: `${config.origin}/login`, throw: false },
     logger: { disabled: true },
   });
@@ -102,12 +106,18 @@ export async function getAccess(headers: Headers) {
   const auth = getAuth();
   if (!config || !auth) return { status: "unavailable" } as const;
   try {
-    // Cookie caching is disabled: each request proves a live database-backed session.
-    const session = await auth.api.getSession({ headers });
+    // A request presenting a bearer token is judged by that token alone: its
+    // cookies are set aside, so an invalid token never falls back to a session
+    // cookie sent with it. Whichever proof it is, cookie caching is disabled,
+    // so each request proves a live database-backed session.
+    const proof = headers.has("authorization") ? "bearer" : "cookie";
+    const presented = new Headers(headers);
+    if (proof === "bearer") presented.delete("cookie");
+    const session = await auth.api.getSession({ headers: presented });
     if (!session) return { status: "unauthenticated" } as const;
     if (!isVerifiedOwner(session.user, config.ownerEmail))
       return { status: "forbidden" } as const;
-    return { status: "authorized", userId: session.user.id } as const;
+    return { status: "authorized", userId: session.user.id, proof } as const;
   } catch {
     return { status: "unavailable" } as const;
   }

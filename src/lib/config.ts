@@ -6,6 +6,7 @@ export function getConfig() {
     BETTER_AUTH_SECRET,
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
+    GOOGLE_IOS_CLIENT_ID,
     PRIVATE_OWNER_EMAIL,
   } = process.env;
   if (
@@ -38,7 +39,12 @@ export function getConfig() {
       databaseURL: DATABASE_URL,
       origin: origin.origin,
       secret: BETTER_AUTH_SECRET,
-      googleClientId: GOOGLE_CLIENT_ID,
+      // The web client comes first: Google's redirect sign-in uses it. The
+      // iOS client, when configured, is only accepted as an ID token audience.
+      googleClientIds: [
+        GOOGLE_CLIENT_ID,
+        ...(GOOGLE_IOS_CLIENT_ID?.trim() ? [GOOGLE_IOS_CLIENT_ID.trim()] : []),
+      ],
       googleClientSecret: GOOGLE_CLIENT_SECRET,
       ownerEmail,
     };
