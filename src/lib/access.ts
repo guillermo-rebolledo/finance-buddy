@@ -44,18 +44,24 @@ export function unsupportedBuild(request: Request) {
     ? null
     : jsonError("upgrade_required", "Update the app to keep using your journal.");
 }
-// Every private endpoint proves a live owner session; a write additionally
-// proves a same-origin JSON request before anything is read from its body.
+// Every private endpoint proves a live owner session, and a write proves where
+// it came from before anything is read from its body. A present Origin must be
+// this app's, however the request is authenticated. A write carrying the
+// session cookie must name that Origin, since a browser attaches cookies to
+// other sites' requests too; a bearer token is only ever attached by the client
+// holding it, so a native write needs none. Every write carries JSON.
 export async function authorizeOwner(request: Request, write: boolean) {
   const outdated = unsupportedBuild(request);
   if (outdated) return { denied: outdated };
   const access = await getAccess(request.headers);
   if (access.status !== "authorized")
     return { denied: jsonError(access.status, "Workspace access required.") };
+  const origin = request.headers.get("origin");
   if (
-    write &&
-    (request.headers.get("origin") !== getConfig()?.origin ||
-      !request.headers.get("content-type")?.startsWith("application/json"))
+    (origin !== null && origin !== getConfig()?.origin) ||
+    (write &&
+      ((origin === null && access.proof === "cookie") ||
+        !request.headers.get("content-type")?.startsWith("application/json")))
   )
     return { denied: jsonError("request_not_allowed", "Request not allowed.") };
   return { owner: access.userId };

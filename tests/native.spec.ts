@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import {
+  entryRow,
   expectRefusal,
   moveClockTo,
   nativeClient,
@@ -181,4 +182,177 @@ test("native sign-in fails closed in a server without owner configuration", asyn
   const { response, bearer } = await nativeSignIn({ base: "http://127.0.0.1:3101" });
   expect(bearer).toBeNull();
   await expectRefusal(response, "unavailable", 503);
+});
+
+test("the owner records, corrects and deletes movements and manages categories from a native client", async ({
+  page,
+}) => {
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  const { bearer } = await nativeSignIn();
+  expect(bearer).toBeTruthy();
+  const app = nativeClient(bearer);
+  await moveClockTo("2026-09-11T18:00:00Z");
+  const initial = await (await app("/api/journal")).json();
+  const groceries = initial.categories.find(
+    (category: { name: string }) => category.name === "Groceries",
+  );
+  const income = {
+    id: randomUUID(),
+    kind: "income",
+    amount: "5000",
+    date: "2026-09-10",
+    categoryId: null,
+    note: "Recorded on the phone",
+  };
+  const expense = {
+    id: randomUUID(),
+    kind: "expense",
+    amount: "250.40",
+    date: "2026-09-09",
+    categoryId: groceries.id,
+    note: "",
+  };
+  const refund = {
+    id: randomUUID(),
+    kind: "refund",
+    amount: "40.40",
+    date: "2026-09-11",
+    categoryId: groceries.id,
+    note: "",
+  };
+  for (const body of [income, expense, refund])
+    expect((await app("/api/journal", { method: "POST", body })).status).toBe(200);
+  // A retry after a lost reply records nothing twice, and an identifier never
+  // takes other values.
+  expect((await app("/api/journal", { method: "POST", body: expense })).status).toBe(200);
+  await expectRefusal(
+    await app("/api/journal", { method: "POST", body: { ...expense, amount: "999" } }),
+    "invalid_field",
+    400,
+  );
+  expect(
+    (
+      await app("/api/journal", {
+        method: "PATCH",
+        body: { ...expense, amount: "260.40", date: "2026-09-10" },
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (await app("/api/journal", { method: "DELETE", body: { id: income.id } })).status,
+  ).toBe(200);
+  await expectRefusal(
+    await app("/api/journal", { method: "DELETE", body: { id: income.id } }),
+    "invalid_field",
+    400,
+  );
+  const after = await (await app("/api/journal")).json();
+  expect(after.entries.map((entry: { id: string }) => entry.id).sort()).toEqual(
+    [expense.id, refund.id].sort(),
+  );
+  expect([after.income, after.expenses]).toEqual(["0.00", "220.00"]);
+  // The web reads exactly what the phone wrote.
+  expect(after).toEqual(await (await page.request.get("/api/journal")).json());
+  await page.reload();
+  await expect(entryRow(page, "Expense", "Groceries")).toBeVisible();
+  await expect(entryRow(page, "Refund", "Groceries")).toBeVisible();
+
+  const created = randomUUID();
+  expect(
+    (
+      await app("/api/categories", {
+        method: "POST",
+        body: { action: "create", kind: "expense", name: "Phone bills", id: created },
+      })
+    ).status,
+  ).toBe(200);
+  for (const body of [
+    { action: "rename", id: created, name: "Mobile" },
+    { action: "archive", id: created },
+    { action: "restore", id: created },
+  ])
+    expect((await app("/api/categories", { method: "POST", body })).status).toBe(200);
+  const lists = await (await page.request.get("/api/categories")).json();
+  expect(lists.expense.find((category: { id: string }) => category.id === created)).toEqual({
+    id: created,
+    kind: "expense",
+    name: "Mobile",
+    active: true,
+  });
+  await page.goto("/categories");
+  await expect(
+    page.getByRole("button", { name: "Archive Mobile", exact: true }),
+  ).toBeVisible();
+});
+
+test("a cookie write must name this app's Origin, a bearer write needs none, and a foreign Origin is always refused", async ({
+  page,
+}) => {
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  const { bearer } = await nativeSignIn();
+  const app = nativeClient(bearer);
+  await moveClockTo("2026-09-11T18:00:00Z");
+  const entry = () => ({
+    id: randomUUID(),
+    kind: "expense",
+    amount: "1.00",
+    date: "2026-09-10",
+    categoryId: null,
+    note: "",
+  });
+  const foreign = { Origin: "https://attacker.example" };
+  const writes = [
+    { path: "/api/journal", method: "POST", body: entry() },
+    { path: "/api/journal", method: "PATCH", body: entry() },
+    { path: "/api/journal", method: "DELETE", body: { id: randomUUID() } },
+    {
+      path: "/api/categories",
+      method: "POST",
+      body: { action: "create", kind: "expense", name: "Forged" },
+    },
+  ];
+  for (const { path, method, body } of writes) {
+    // The browser's cookie alone does not prove this app sent the write.
+    await expectRefusal(
+      await page.request.fetch(path, { method, data: body }),
+      "request_not_allowed",
+      403,
+    );
+    await expectRefusal(
+      await page.request.fetch(path, { method, data: body, headers: foreign }),
+      "request_not_allowed",
+      403,
+    );
+    await expectRefusal(
+      await app(path, { method, body, headers: foreign }),
+      "request_not_allowed",
+      403,
+    );
+  }
+  // A foreign Origin is refused on reads too.
+  await expectRefusal(
+    await app("/api/journal", { headers: foreign }),
+    "request_not_allowed",
+    403,
+  );
+  // A bearer write still carries JSON.
+  await expectRefusal(
+    await app("/api/journal", {
+      method: "POST",
+      body: JSON.stringify(entry()),
+      headers: { "Content-Type": "text/plain" },
+    }),
+    "request_not_allowed",
+    403,
+  );
+  const untouched = await (await app("/api/journal")).json();
+  expect(untouched.entries).toEqual([]);
+  expect(JSON.stringify(await (await app("/api/categories")).json())).not.toContain("Forged");
+  // A bearer write naming this app's own Origin is as good as one naming none.
+  expect(
+    (await app("/api/journal", { method: "POST", body: entry(), headers: { Origin: origin } }))
+      .status,
+  ).toBe(200);
 });

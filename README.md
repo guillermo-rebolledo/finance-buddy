@@ -99,11 +99,11 @@ References: [Next.js setup](https://nextjs.org/docs/app/getting-started/installa
 
 `GET /api/journal` returns the authenticated owner's current Monday–Sunday report: date-only boundaries, all period entries, active category choices, totals, and spending breakdown. Monetary values are exact decimal strings with explicit MXN currency. PostgreSQL stores positive integer centavos; report arithmetic uses `bigint`. Total expenses are expenses minus refunds received in the period, so totals and category groups can be negative and are never clamped. Income excludes refunds. Net change describes recorded activity.
 
-`POST /api/journal` accepts `{ id, kind, amount, date, categoryId, note }`. Use a stable UUID for retries, `income`, `expense`, or `refund`, a positive decimal string (up to 12 whole digits and two decimal places), an ISO movement date, a nullable category UUID, and a note of at most 2,000 characters. Refunds are entered as positive amounts on their receipt date and accept the owner's active expense categories; an archived category must be restored through category management before a new entry can use it. Ownership comes only from the trusted session. Requests require JSON and the configured Origin. Repeating the same ID/payload returns success without inserting another entry; reusing an ID with different values is rejected.
+`POST /api/journal` accepts `{ id, kind, amount, date, categoryId, note }`. Use a stable UUID for retries, `income`, `expense`, or `refund`, a positive decimal string (up to 12 whole digits and two decimal places), an ISO movement date, a nullable category UUID, and a note of at most 2,000 characters. Refunds are entered as positive amounts on their receipt date and accept the owner's active expense categories; an archived category must be restored through category management before a new entry can use it. Ownership comes only from the trusted session. Requests require JSON and follow the request integrity rules below. Repeating the same ID/payload returns success without inserting another entry; reusing an ID with different values is rejected.
 
 `PATCH /api/journal` corrects an existing entry and takes the same body as a save, where `id` names the entry to change. Every field is replaced, the creation rules apply unchanged, and one owner-scoped statement either applies the whole correction or changes nothing. The entry keeps the archived category it already carries while another field changes; a replacement category must be active, and both must belong to the movement type's own list, so an income category never survives a change to expense or refund.
 
-`DELETE /api/journal` accepts `{ id }` and removes that entry permanently. There is no trash, restore, undo, or edit history. Deleting an entry that is not the owner's, or one already deleted, changes nothing and cannot recreate it. Category records and every other movement are untouched. Both methods require JSON and the configured Origin, and report a refusal as a `field` error exactly as saving does.
+`DELETE /api/journal` accepts `{ id }` and removes that entry permanently. There is no trash, restore, undo, or edit history. Deleting an entry that is not the owner's, or one already deleted, changes nothing and cannot recreate it. Category records and every other movement are untouched. Both methods require JSON, follow the same request integrity rules, and report a refusal as a `field` error exactly as saving does.
 
 Starter categories are seeded transactionally once per owner. Renames and archives are preserved. Exports read this same summary and have their own sections below. Backdated entries outside the current week are durably saved and explicitly acknowledged without changing the current totals. Correcting an entry's date moves it out of one period and into the other, and both are recomputed from the stored movements.
 
@@ -115,7 +115,7 @@ Every refusal from a private endpoint, and from the auth route itself, is JSON w
 | ------------------------ | ------ | ------------------------------------------------------------------------------------------------ |
 | `unauthenticated`        | 401    | No live session. Sign in again.                                                                  |
 | `forbidden`              | 403    | The session's identity is not the configured owner.                                              |
-| `request_not_allowed`    | 403    | The request failed integrity checks: a missing or foreign Origin, or a write without JSON.       |
+| `request_not_allowed`    | 403    | The request failed integrity checks: a foreign Origin, a cookie write without Origin, or no JSON.|
 | `not_found`              | 404    | The auth operation is not exposed.                                                               |
 | `invalid_period`         | 400    | The day, week, or month named by `kind` and `date` cannot be resolved.                           |
 | `invalid_field`          | 400    | The body was refused; `field` names the input at fault.                                          |
@@ -127,6 +127,10 @@ Every refusal from a private endpoint, and from the auth route itself, is JSON w
 | `not_confirmed`          | 503    | A write's outcome is unknown, or it did not complete. Retrying the same request is safe.         |
 
 The session reader keeps Better Auth's reply shape, answering `null` with 403 or 503 rather than a refusal body. Refusals Better Auth raises while completing a sign-in carry Better Auth's own error body.
+
+## Request integrity
+
+A private request that names an Origin must name the configured one, however it is authenticated. A write authenticated by the session cookie must also name that Origin, because a browser attaches cookies to other sites' requests too. A write authenticated by a bearer token needs no Origin: only the client holding the token attaches it, and a native client has no origin to send. Every write carries a JSON body. No CORS headers are sent, so no other site's page can read a reply.
 
 ## App builds
 
@@ -152,7 +156,7 @@ The dashboard carries **Export to Google Sheets** next to **Export PDF** on phon
 
 Sign-in and export authorization are separate. Signing in never asks for file access; the first export that needs it offers **Connect Google Sheets export**, which asks Google for `drive.file` alone. Declining or revoking it leaves sign-in, the journal, categories, and every other operation untouched, and the control is offered again the next time an export runs.
 
-`POST /api/journal/spreadsheet?kind=&date=` names the period exactly as the report and the PDF export do, takes `{ id }` as its body, requires JSON and the configured Origin, and proves a live owner session before anything else. `id` is a UUID naming this export. The response is `{ url, title }`, and a refusal is `{ error }` with `reconnect: true` when the owner has to authorize Google again. Provider tokens are minted per request on the server and are never returned.
+`POST /api/journal/spreadsheet?kind=&date=` names the period exactly as the report and the PDF export do, takes `{ id }` as its body, requires JSON, follows the request integrity rules, and proves a live owner session before anything else. `id` is a UUID naming this export. The response is `{ url, title }`, and a refusal is `{ error }` with `reconnect: true` when the owner has to authorize Google again. Provider tokens are minted per request on the server and are never returned.
 
 Each explicit export creates a new spreadsheet from the same owned-period dataset as the on-screen summary: a **Summary** tab with the covered start and end dates, the Mexico City generation date, MXN totals, net change, and entry count; a **Categories** tab with the same breakdown, including Uncategorized and archived categories; and an **Entries** tab with every movement, its type, category, note, and signed amount, where a refund reads as the reduction it is. The generation date is also in the spreadsheet title and is distinct from the period covered. Amounts are written as numbers; category names and notes are written as literal text, so input that looks like a formula stays text.
 
