@@ -72,6 +72,15 @@ export function getAuth() {
   if (!config) return null;
   return (instance ??= createAuth(config));
 }
+// A request presenting a bearer token is judged by that token alone: its
+// cookies are set aside, so an invalid token never falls back to a session
+// cookie sent with it.
+function presentedProof(headers: Headers) {
+  if (!headers.has("authorization")) return headers;
+  const bearerOnly = new Headers(headers);
+  bearerOnly.delete("cookie");
+  return bearerOnly;
+}
 
 // Export authorization is separate from sign-in: the session stays valid whether
 // or not this scope was ever granted, and a refusal here only blocks exporting.
@@ -80,7 +89,8 @@ export async function exportAccess(headers: Headers) {
   const auth = getAuth();
   if (!auth) return { status: "unavailable" } as const;
   try {
-    const accounts = await auth.api.listUserAccounts({ headers });
+    const proven = presentedProof(headers);
+    const accounts = await auth.api.listUserAccounts({ headers: proven });
     const account = accounts.find(
       (candidate) =>
         candidate.providerId === "google" &&
@@ -88,7 +98,7 @@ export async function exportAccess(headers: Headers) {
     );
     if (!account) return { status: "unauthorized" } as const;
     const token = await auth.api.getAccessToken({
-      headers,
+      headers: proven,
       body: { accountId: account.id },
     });
     // A refused refresh, a revoked grant and a dropped scope all read the same
@@ -106,14 +116,12 @@ export async function getAccess(headers: Headers) {
   const auth = getAuth();
   if (!config || !auth) return { status: "unavailable" } as const;
   try {
-    // A request presenting a bearer token is judged by that token alone: its
-    // cookies are set aside, so an invalid token never falls back to a session
-    // cookie sent with it. Whichever proof it is, cookie caching is disabled,
-    // so each request proves a live database-backed session.
+    // Cookie caching is disabled: each request proves a live database-backed
+    // session, from its bearer token when it presents one.
     const proof = headers.has("authorization") ? "bearer" : "cookie";
-    const presented = new Headers(headers);
-    if (proof === "bearer") presented.delete("cookie");
-    const session = await auth.api.getSession({ headers: presented });
+    const session = await auth.api.getSession({
+      headers: presentedProof(headers),
+    });
     if (!session) return { status: "unauthenticated" } as const;
     if (!isVerifiedOwner(session.user, config.ownerEmail))
       return { status: "forbidden" } as const;

@@ -1,12 +1,18 @@
 import { test, expect } from "@playwright/test";
 import {
+  connectSheets,
+  createdSpreadsheets,
   entryRow,
   expectRefusal,
+  forgetSpreadsheets,
+  googleAnswers,
   moveClockTo,
   nativeClient,
   nativeSignIn,
+  pdfText,
   resetClock,
   signIn,
+  tabRows,
 } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
@@ -16,10 +22,15 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 test.beforeEach(async ({}, testInfo) => {
   // A native client has no viewport, so its requests are exercised once.
   test.skip(testInfo.project.name !== "desktop");
-  await pool.query("TRUNCATE financial_movement, category, category_seed");
+  await pool.query(
+    "TRUNCATE spreadsheet_export, financial_movement, category, category_seed",
+  );
+  await googleAnswers();
+  await forgetSpreadsheets();
 });
 test.afterAll(async () => {
   await pool.end();
+  await googleAnswers();
   await resetClock();
 });
 
@@ -406,4 +417,134 @@ test("signing out in the app ends that session alone, and a bearer session expir
   } finally {
     await resetClock();
   }
+});
+
+test("a native client downloads the same PDF snapshot of a period as the web", async ({
+  page,
+}) => {
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  const app = nativeClient((await nativeSignIn()).bearer);
+  await moveClockTo("2026-09-11T18:00:00Z");
+  for (const body of [
+    { kind: "income", amount: "4000", date: "2026-09-08", note: "Paid on Tuesday" },
+    { kind: "expense", amount: "150.75", date: "2026-09-09", note: "Pharmacy" },
+  ])
+    expect(
+      (
+        await app("/api/journal", {
+          method: "POST",
+          body: { id: randomUUID(), categoryId: null, ...body },
+        })
+      ).status,
+    ).toBe(200);
+  const path = "/api/journal/export?kind=week&date=2026-09-11";
+  const mine = await app(path);
+  expect(mine.status).toBe(200);
+  expect(mine.headers.get("content-type")).toBe("application/pdf");
+  expect(mine.headers.get("cache-control")).toContain("no-store");
+  expect(mine.headers.get("content-disposition")).toBe(
+    'attachment; filename="finance-buddy-week-2026-09-07-to-2026-09-13-exported-2026-09-11.pdf"',
+  );
+  const bytes = Buffer.from(await mine.arrayBuffer());
+  expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
+  const text = pdfText(bytes);
+  expect(text).toContain("Total expenses (after refunds) MXN 150.75");
+  expect(text).toContain("Pharmacy");
+  // The web downloads exactly the same snapshot of the same period.
+  const web = await page.request.get(path);
+  expect(web.headers()["content-disposition"]).toBe(
+    mine.headers.get("content-disposition"),
+  );
+  expect(pdfText(await web.body())).toBe(text);
+  await expectRefusal(await app("/api/journal/export?kind=quarter"), "invalid_period", 400);
+});
+
+test("a native client exports to Google Sheets with the grant made on the web, which native sign-in never drops", async ({
+  page,
+}) => {
+  const period = "/api/journal/spreadsheet?kind=week&date=2026-09-11";
+  const exporting = (client: ReturnType<typeof nativeClient>, id = randomUUID()) =>
+    client(period, { method: "POST", body: { id } });
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  const beforeGrant = nativeClient((await nativeSignIn()).bearer);
+  await moveClockTo("2026-09-11T18:00:00Z");
+  expect(
+    (
+      await beforeGrant("/api/journal", {
+        method: "POST",
+        body: {
+          id: randomUUID(),
+          kind: "expense",
+          amount: "150.75",
+          date: "2026-09-09",
+          categoryId: null,
+          note: "Pharmacy",
+        },
+      })
+    ).status,
+  ).toBe(200);
+  // Without a grant the app is told to reconnect, which happens on the web.
+  const refused = await exporting(beforeGrant);
+  await expectRefusal(refused.clone(), "reconnect_required", 403);
+  expect((await refused.json()).reconnect).toBe(true);
+  expect(await createdSpreadsheets()).toHaveLength(0);
+
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  await page.getByRole("button", { name: "Export to Google Sheets" }).click();
+  await connectSheets(page);
+  await expect(page.getByText("Google Sheets export is connected")).toBeVisible();
+
+  // Signing in natively after connecting keeps the web's grant.
+  const later = await nativeSignIn();
+  expect(later.response.status).toBe(200);
+  const app = nativeClient(later.bearer);
+  await moveClockTo("2026-09-11T18:00:00Z");
+  const id = randomUUID();
+  const created = await exporting(app, id);
+  expect(created.status).toBe(200);
+  const result = await created.json();
+  const [spreadsheet] = await createdSpreadsheets();
+  expect(result.url).toBe(
+    `https://docs.google.com/spreadsheets/d/${spreadsheet.spreadsheetId}/edit`,
+  );
+  expect(
+    tabRows(spreadsheet, "Summary").find(
+      (row) => row[0]?.stringValue === "Total expenses",
+    )![1],
+  ).toEqual({ numberValue: 150.75 });
+  // The same export repeated returns its own spreadsheet, not another one.
+  const repeated = await exporting(app, id);
+  expect(repeated.status).toBe(200);
+  expect(await repeated.json()).toEqual(result);
+  expect(await createdSpreadsheets()).toHaveLength(1);
+  // The web keeps exporting without reconnecting.
+  expect(
+    (
+      await page.request.post(period, {
+        headers: { Origin: origin },
+        data: { id: randomUUID() },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(await createdSpreadsheets()).toHaveLength(2);
+
+  // A reply that never arrives is never retried into a second spreadsheet.
+  await googleAnswers("silent");
+  const lost = randomUUID();
+  await expectRefusal(await exporting(app, lost), "export_unconfirmed", 409);
+  await googleAnswers();
+  await expectRefusal(await exporting(app, lost), "export_unconfirmed", 409);
+  await expectRefusal(
+    await app(period, {
+      method: "POST",
+      body: { id: randomUUID() },
+      headers: { Origin: "https://attacker.example" },
+    }),
+    "request_not_allowed",
+    403,
+  );
+  expect(await createdSpreadsheets()).toHaveLength(2);
 });
