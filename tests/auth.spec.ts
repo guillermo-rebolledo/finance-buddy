@@ -1,4 +1,11 @@
-import { expectRefusal, signIn, openNavigation } from "./helpers";
+import {
+  expectRefusal,
+  goToSection,
+  nativeClient,
+  nativeSignIn,
+  openNavigation,
+  signIn,
+} from "./helpers";
 import { test, expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 test.beforeEach(async () => {
@@ -191,4 +198,35 @@ test("missing owner configuration fails closed in an ordinary production server"
   );
   await expectRefusal(signin, "unavailable", 503);
   expect(await signin.text()).not.toContain("owner@example.test");
+});
+
+test("Sign out everywhere, once confirmed, ends every session including a phone's", async ({
+  page,
+  context,
+}) => {
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  const { bearer } = await nativeSignIn();
+  const app = nativeClient(bearer);
+  expect((await app("/api/private")).status).toBe(200);
+  await goToSection(page, "Settings");
+  await expect(page.getByRole("heading", { name: "Sessions" })).toBeVisible();
+  const control = page.getByRole("button", { name: "Sign out everywhere" });
+  const dialog = page.getByRole("alertdialog", { name: "Sign out everywhere?" });
+  await control.click();
+  await expect(dialog).toBeVisible();
+  // Keeping the sessions changes nothing and returns to the control.
+  await dialog.getByRole("button", { name: "Keep sessions" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(control).toBeFocused();
+  expect((await app("/api/private")).status).toBe(200);
+  expect((await context.request.get("/api/private")).status()).toBe(200);
+  // The control is opened and confirmed from the keyboard alone.
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Sign out everywhere" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/login$/);
+  await expectRefusal(await app("/api/private"), "unauthenticated", 401);
+  expect((await context.request.get("/api/private")).status()).toBe(401);
 });

@@ -356,3 +356,54 @@ test("a cookie write must name this app's Origin, a bearer write needs none, and
       .status,
   ).toBe(200);
 });
+
+test("signing out in the app ends that session alone, and a bearer session expires like a cookie", async ({
+  page,
+}) => {
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  const { bearer } = await nativeSignIn();
+  const app = nativeClient(bearer);
+  const session = await (await app("/api/auth/get-session")).json();
+  expect(session.user.email).toBe("owner@example.test");
+  // Ending a session still refuses a foreign Origin, and without a bearer token
+  // a request naming no Origin cannot sign anyone out.
+  await expectRefusal(
+    await app("/api/auth/sign-out", {
+      method: "POST",
+      body: {},
+      headers: { Origin: "https://attacker.example" },
+    }),
+    "request_not_allowed",
+    403,
+  );
+  await expectRefusal(
+    await nativeClient()("/api/auth/sign-out", { method: "POST", body: {} }),
+    "request_not_allowed",
+    403,
+  );
+  expect((await app("/api/private")).status).toBe(200);
+
+  expect((await app("/api/auth/sign-out", { method: "POST", body: {} })).status).toBe(200);
+  await expectRefusal(await app("/api/private"), "unauthenticated", 401);
+  expect(await (await app("/api/auth/get-session")).json()).toBeNull();
+  // The browser's own session is untouched.
+  expect((await page.request.get("/api/private")).status()).toBe(200);
+
+  // Auth operations the app does not use stay unreachable with a token too.
+  const other = nativeClient((await nativeSignIn()).bearer);
+  for (const path of [
+    "/api/auth/list-sessions",
+    "/api/auth/revoke-other-sessions",
+    "/api/auth/update-user",
+  ])
+    await expectRefusal(await other(path, { method: "POST", body: {} }), "not_found", 404);
+  expect((await other("/api/private")).status).toBe(200);
+  // Seven days after it began, a bearer session no longer works.
+  try {
+    await moveClockTo(new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString());
+    await expectRefusal(await other("/api/private"), "unauthenticated", 401);
+  } finally {
+    await resetClock();
+  }
+});

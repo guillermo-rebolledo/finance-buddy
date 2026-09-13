@@ -33,6 +33,8 @@ async function handle(request: Request) {
       "/callback/google",
       "/get-session",
       "/sign-out",
+      // Sign out everywhere: every session of the owner ends, a phone's too.
+      "/revoke-sessions",
     ].includes(path)
   )
     return jsonError("not_found", "Not found.");
@@ -48,12 +50,17 @@ async function handle(request: Request) {
   }
   const native = await nativeSignIn(request, path);
   // A browser names its Origin on every POST, and it must be this app's. Only
-  // a native client, which has none, may leave it out, and only to present an
-  // ID token.
+  // a native client, which has none, may leave it out: to present an ID token,
+  // or to end sessions with the bearer token it holds.
   const origin = request.headers.get("origin");
+  const endsBearerSession =
+    request.headers.has("authorization") &&
+    ["/sign-out", "/revoke-sessions"].includes(path);
   if (
     request.method === "POST" &&
-    (origin === null ? !native : origin !== getConfig()?.origin)
+    (origin === null
+      ? !(native || endsBearerSession)
+      : origin !== getConfig()?.origin)
   )
     return jsonError("request_not_allowed", "Access denied.");
   if (native && !native.nonce)

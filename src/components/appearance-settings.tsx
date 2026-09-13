@@ -93,15 +93,20 @@ function SchemeChoice({ mode }: { mode: SchemeMode }) {
 
 // Appearance belongs to this browser rather than to the journal, so it is saved
 // on the device and applies at once, with nothing to submit.
-export function AppearanceSettings() {
+export function AppearanceSettings({
+  children,
+}: {
+  // Further settings sections, shown after Appearance.
+  children?: React.ReactNode;
+}) {
   const { theme, setTheme } = useTheme();
   const hydrated = useHydrated();
   return (
     <main className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10">
       <PageHeader title="Settings">
         <p className="max-w-2xl">
-          Preferences for this browser. They are saved on this device and never
-          change your journal.
+          Preferences for this browser, and where you stay signed in. None of
+          them change your journal.
         </p>
       </PageHeader>
       <section aria-label="Appearance">
@@ -148,6 +153,7 @@ export function AppearanceSettings() {
           </CardContent>
         </Card>
       </section>
+      {children}
     </main>
   );
 }
