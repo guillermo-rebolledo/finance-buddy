@@ -1,7 +1,8 @@
 "use client";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { EllipsisIcon, PencilIcon, Plus, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
 import {
   entryKindDetail,
   entryKinds,
@@ -14,6 +15,7 @@ import {
   type EntryInput,
   type Summary,
 } from "@/lib/financial";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -23,7 +25,6 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,8 +34,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Empty,
   EmptyHeader,
@@ -79,11 +85,8 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   // currently in flight, so exactly one control reads as busy.
   const [removing, setRemoving] = useState<Entry | null>(null);
   const [deletingId, setDeletingId] = useState("");
-  const [removeError, setRemoveError] = useState("");
   const [kind, setKind] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [uncertain, setUncertain] = useState(false);
   const pending = useRef<EntryInput | null>(null);
   const inFlight = useRef(false);
@@ -92,7 +95,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   );
   const fieldProps = (name: string) => ({
     "aria-invalid": invalidField === name,
-    "aria-describedby": invalidField === name ? "entry-error" : undefined,
   });
   // What an unconfirmed write means depends on the write: a recording could be
   // duplicated by a replacement, a correction only writes the same values again.
@@ -101,6 +103,15 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       ? "The correction could not be confirmed. Retry this same entry safely; it writes the same values again."
       : "Save could not be confirmed. Retry this same entry safely; do not create a replacement.";
   const form = useRef<HTMLFormElement>(null);
+  // Every refusal is announced once, as a notification; the form keeps its
+  // values and marks the field at fault, if any.
+  const refuse = (message: string) => toast.error(message);
+  // The control pressed is gone once the form closes or the row leaves, so focus
+  // moves to the list the outcome changed instead of falling to the body.
+  const focusEntries = () =>
+    requestAnimationFrame(() =>
+      document.getElementById("entries-heading")?.focus(),
+    );
   // One place opens the form for either purpose, on a period just reloaded, so
   // no stale message, marked field or previous entry's values survive into it.
   async function openForm(entry: Entry | null) {
@@ -109,20 +120,15 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     setUncertain(false);
     setEditing(entry);
     setKind(entry?.kind ?? "");
-    setError("");
     setInvalidField(null);
-    setSuccess("");
     setOpen(true);
     requestAnimationFrame(() => document.getElementById("kind")?.focus());
   }
   // Deletion is permanent, so it happens only from the confirmation and only
-  // once while pending. The control pressed is gone afterwards, along with the
-  // row, so the outcome takes focus instead of the body.
+  // once while pending.
   async function remove(entry: Entry) {
     if (deletingId) return;
     setDeletingId(entry.id);
-    setRemoveError("");
-    setSuccess("");
     try {
       const response = await fetch("/api/journal", {
         method: "DELETE",
@@ -131,7 +137,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       });
       const result = await response.json();
       if (!response.ok) {
-        setRemoveError(
+        refuse(
           result.error ||
             "The deletion could not be confirmed. Retry it safely.",
         );
@@ -142,13 +148,11 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         setOpen(false);
         setEditing(null);
       }
-      setSuccess(`Deleted ${entryTitle(entry)}.`);
+      toast.success(`Deleted ${entryTitle(entry)}.`);
       await show(view);
-      requestAnimationFrame(() =>
-        document.getElementById("entry-status")?.focus(),
-      );
+      focusEntries();
     } catch {
-      setRemoveError("The deletion could not be confirmed. Retry it safely.");
+      refuse("The deletion could not be confirmed. Retry it safely.");
     } finally {
       setDeletingId("");
     }
@@ -173,7 +177,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     const current = await show(view);
     if (!current) {
       setInvalidField(null);
-      setError(
+      refuse(
         "Could not check the current date. Your input is preserved; retry when the overview is available.",
       );
       inFlight.current = false;
@@ -184,19 +188,19 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     if (invalid) {
       inFlight.current = false;
       setSaving(false);
-      setError(invalid.message);
+      refuse(invalid.message);
       setInvalidField(invalid.field);
-      requestAnimationFrame(() =>
-        document.getElementById("entry-error")?.focus(),
-      );
+      // The field at fault takes focus, so the owner lands where the fix goes.
+      if (invalid.field)
+        requestAnimationFrame(() =>
+          document.getElementById(invalid.field!)?.focus(),
+        );
       return;
     }
     pending.current = entry;
     inFlight.current = true;
     setSaving(true);
-    setError("");
     setInvalidField(null);
-    setSuccess("");
     try {
       const response = await fetch("/api/journal", {
         method: editing ? "PATCH" : "POST",
@@ -210,7 +214,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           setUncertain(false);
         } else setUncertain(true);
         setInvalidField(result.field ?? null);
-        setError(result.error || unconfirmed());
+        refuse(result.error || unconfirmed());
         return;
       }
       pending.current = null;
@@ -218,7 +222,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       // A moved entry leaves one period and enters another, so the reply says
       // where it went rather than implying the period on screen holds it.
       const outcome = editing ? "Entry updated" : "Entry saved";
-      setSuccess(
+      toast.success(
         entry.date < current.start || entry.date > current.end
           ? `${outcome} for ${entry.date}, outside the period you are viewing. Jump to that date to see it.`
           : `${outcome}.`,
@@ -228,12 +232,10 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       setOpen(false);
       setEditing(null);
       await show(view);
-      requestAnimationFrame(() =>
-        document.getElementById("entry-status")?.focus(),
-      );
+      focusEntries();
     } catch {
       setUncertain(true);
-      setError(unconfirmed());
+      refuse(unconfirmed());
     } finally {
       inFlight.current = false;
       setSaving(false);
@@ -296,11 +298,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         loaded={loaded}
         onShow={show}
       />
-      {success && (
-        <p role="status" id="entry-status" tabIndex={-1}>
-          {success}
-        </p>
-      )}
       {loadError && (
         <PeriodUnavailable
           requestedLabel={requestedLabel}
@@ -447,12 +444,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                   </Field>
                 </FieldGroup>
               </fieldset>
-              {error && (
-                <Alert variant="destructive" id="entry-error" tabIndex={-1}>
-                  <AlertTitle>Entry needs attention</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
               <div className="flex flex-wrap gap-3">
                 <Button type="submit" size="lg" disabled={saving}>
                   {saving
@@ -471,7 +462,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                   onClick={() => {
                     setOpen(false);
                     setEditing(null);
-                    setError("");
                     setInvalidField(null);
                   }}
                 >
@@ -486,116 +476,79 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         <Card>
           <CardHeader>
             <CardTitle>
-              <h2>Entries</h2>
+              <h2 id="entries-heading" tabIndex={-1} className="outline-none">
+                Entries
+              </h2>
             </CardTitle>
             <CardDescription>Latest movement date first.</CardDescription>
           </CardHeader>
           <CardContent>
             {summary.entries.length ? (
+              // One row per entry, read left to right like a table without
+              // its grid: what it is, when and why, how much, and its actions.
               <ul className="divide-y">
                 {summary.entries.map((entry) => (
                   <li
                     key={entry.id}
-                    className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0"
+                    className="flex items-start gap-2 py-3 first:pt-0 last:pb-0"
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex min-w-0 flex-col gap-0.5">
-                        <span className="font-medium break-words">
-                          {entryKindDetail(entry.kind)?.label ?? entry.kind} ·{" "}
-                          {entry.category}
+                    {/* What the entry is and how much leads; where it belongs,
+                        when it moved and why follow beneath it. */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-semibold">
+                          {entryKindDetail(entry.kind)?.label ?? entry.kind}
                         </span>
+                        <span className="shrink-0 text-base font-semibold tabular-nums">
+                          {money(signedAmount(entry))}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <Badge variant="secondary" className="text-sm">
+                          {entry.category}
+                        </Badge>
                         <time
-                          className="text-sm text-muted-foreground"
+                          className="text-sm text-muted-foreground tabular-nums"
                           dateTime={entry.date}
                         >
                           {entry.date}
                         </time>
                       </div>
-                      <span className="shrink-0 font-medium tabular-nums">
-                        {money(signedAmount(entry))}
-                      </span>
+                      {entry.note && (
+                        <p
+                          className="truncate text-sm text-muted-foreground"
+                          title={entry.note}
+                        >
+                          {entry.note}
+                        </p>
+                      )}
                     </div>
-                    {entry.note && (
-                      <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
-                        {entry.note}
-                      </p>
-                    )}
-                    <div className="-ml-2 flex flex-wrap gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Edit ${entryTitle(entry)}`}
-                        disabled={loading || saving || deletingId !== ""}
-                        onClick={() => openForm(entry)}
-                      >
-                        <Pencil aria-hidden="true" />
-                        Edit
-                      </Button>
-                      <AlertDialog
-                        open={removing?.id === entry.id}
-                        onOpenChange={(next) => {
-                          if (deletingId) return;
-                          setRemoving(next ? entry : null);
-                          setRemoveError("");
-                        }}
-                      >
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            aria-label={`Delete ${entryTitle(entry)}`}
-                            disabled={loading || saving || deletingId !== ""}
-                          >
-                            <Trash2 aria-hidden="true" />
-                            Delete
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>
-                              Delete this entry permanently?
-                            </AlertDialogTitle>
-                            <AlertDialogDescription>
-                              {entryTitle(entry)}
-                              {entry.categoryId
-                                ? `, in ${entry.category}.`
-                                : ", uncategorized."}{" "}
-                              It leaves your journal and every day, week, and
-                              month total that includes it. This cannot be
-                              undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          {removeError && (
-                            <Alert variant="destructive">
-                              <AlertTitle>Deletion needs attention</AlertTitle>
-                              <AlertDescription>{removeError}</AlertDescription>
-                            </Alert>
-                          )}
-                          <AlertDialogFooter>
-                            <AlertDialogCancel disabled={deletingId !== ""}>
-                              Keep entry
-                            </AlertDialogCancel>
-                            <AlertDialogAction
-                              className={buttonVariants({
-                                variant: "destructive",
-                              })}
-                              disabled={deletingId !== ""}
-                              onClick={(event) => {
-                                // The dialog closes only once the deletion is
-                                // confirmed by the server.
-                                event.preventDefault();
-                                remove(entry);
-                              }}
-                            >
-                              {deletingId === entry.id
-                                ? "Deleting…"
-                                : "Delete permanently"}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="-mt-1 -mr-2"
+                          aria-label={`Actions for ${entryTitle(entry)}`}
+                          disabled={loading || saving || deletingId !== ""}
+                        >
+                          <EllipsisIcon />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => openForm(entry)}>
+                          <PencilIcon />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={() => setRemoving(entry)}
+                        >
+                          <Trash2Icon />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </li>
                 ))}
               </ul>
@@ -613,6 +566,48 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
           </CardContent>
         </Card>
       )}
+      {/* One confirmation serves every row, since a row's menu closes as soon
+          as Delete is chosen. */}
+      <AlertDialog
+        open={removing !== null}
+        onOpenChange={(next) => {
+          if (deletingId || next) return;
+          setRemoving(null);
+        }}
+      >
+        {removing && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this entry permanently?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {entryTitle(removing)}
+                {removing.categoryId
+                  ? `, in ${removing.category}.`
+                  : ", uncategorized."}{" "}
+                It leaves your journal and every day, week, and month total that
+                includes it. This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingId !== ""}>
+                Keep entry
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className={buttonVariants({ variant: "destructive" })}
+                disabled={deletingId !== ""}
+                onClick={(event) => {
+                  // The dialog closes only once the deletion is confirmed by
+                  // the server.
+                  event.preventDefault();
+                  remove(removing);
+                }}
+              >
+                {deletingId === removing.id ? "Deleting…" : "Delete permanently"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
     </main>
   );
 }

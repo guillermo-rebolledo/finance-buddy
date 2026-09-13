@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
   choose,
+  entryRow,
   goToSection,
   moveClockTo,
   optionsOf,
@@ -230,7 +231,7 @@ test("renaming keeps category identity across entries and summaries", async ({
   ]);
   await goToSection(page, "Entries");
   await expect(
-    page.getByText("Expense · Supermarket", { exact: true }),
+    entryRow(page, "Expense", "Supermarket"),
   ).toBeVisible();
   // A starter category keeps its identity, so no replacement row appears.
   expect(await lists(page).then((l) => l.expense)).toHaveLength(8);

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { choose, moveClockTo, resetClock, signIn } from "./helpers";
+import { choose, entryRow, moveClockTo, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -268,10 +268,10 @@ test("the dashboard charts the selected period's trend and the registry keeps on
     page.getByRole("button", { name: "Export PDF" }),
   ).toHaveCount(0);
   await expect(
-    page.getByText("Expense · Groceries", { exact: true }),
+    entryRow(page, "Expense", "Groceries"),
   ).toBeVisible();
   await expect(
-    page.getByText("Refund · Groceries", { exact: true }),
+    entryRow(page, "Refund", "Groceries"),
   ).toBeVisible();
 });
 

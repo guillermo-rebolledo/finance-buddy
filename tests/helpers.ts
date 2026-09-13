@@ -212,6 +212,33 @@ export async function optionsOf(
   await expect(page.getByRole("listbox")).toHaveCount(0);
   return names;
 }
+// Entry actions live in each row's menu, named by the entry they act on.
+export async function entryAction(
+  page: import("@playwright/test").Page,
+  action: "Edit" | "Delete",
+  entry: string,
+) {
+  await page.getByRole("button", { name: `Actions for ${entry}` }).click();
+  await page.getByRole("menuitem", { name: action, exact: true }).click();
+}
+// An outcome announced as a notification rather than written into the page.
+export function notification(
+  page: import("@playwright/test").Page,
+  text: string,
+) {
+  return page.locator("[data-sonner-toast]").filter({ hasText: text });
+}
+// An entry row, found by what it is and where it belongs.
+export function entryRow(
+  page: import("@playwright/test").Page,
+  kind: string,
+  category: string,
+) {
+  return page
+    .getByRole("listitem")
+    .filter({ has: page.getByText(kind, { exact: true }) })
+    .filter({ has: page.getByText(category, { exact: true }) });
+}
 
 // On a phone the sections live in the navigation drawer, which the top bar
 // shows and hides; on desktop they are already on screen.
