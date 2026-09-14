@@ -48,8 +48,8 @@ export function budgetOf(
       )
     : null;
 }
-type KindPeriod = Period & { kind: PeriodKind };
-type PeriodFigures = KindPeriod & {
+type PeriodOfKind = Period & { kind: PeriodKind };
+type PeriodFigures = PeriodOfKind & {
   centavos: string | null;
   repeats: boolean | null;
   movements: { kind: string; centavos: string }[];
@@ -80,7 +80,7 @@ function viewOf(figures: PeriodFigures, today: string) {
 }
 // The budget views of the periods named, in the order named, each null
 // without a budget.
-async function viewsFor(owner: string, periods: KindPeriod[], today: string) {
+async function viewsFor(owner: string, periods: PeriodOfKind[], today: string) {
   const { rows } = await database().query<PeriodFigures>(
     periodFiguresQuery(
       `SELECT * FROM json_to_recordset($2::json) AS p(kind text, start date, "end" date)`,
@@ -92,7 +92,7 @@ async function viewsFor(owner: string, periods: KindPeriod[], today: string) {
   );
 }
 // The day, week and month containing a date, shortest first.
-function periodsOn(date: string): KindPeriod[] {
+function periodsOn(date: string): PeriodOfKind[] {
   return periodKinds.map((kind) => ({ kind, ...summaryPeriod(kind, date) }));
 }
 export async function budgetView(owner: string, request: SummaryRequest) {
@@ -112,7 +112,10 @@ export async function entryBudget(owner: string, date: string) {
 // Kinds sort day, week, month wherever periods of different kinds meet.
 const kindRank = (kind: string) =>
   `array_position(ARRAY[${periodKinds.map((name) => `'${name}'`).join(",")}], ${kind})`;
-// A period's last day from its kind and first day, as summaryPeriod resolves it.
+// A period's last day from its kind and first day, mirroring
+// periodKindDetails' `containing` in SQL, which cannot ask the map. Kind names
+// double as PostgreSQL interval units ('1 day', '1 week', '1 month') where
+// periods are stepped through below.
 const periodEnd = (kind: string, start: string) =>
   `(CASE ${kind} WHEN 'day' THEN ${start} WHEN 'week' THEN ${start} + 6
     ELSE (${start} + interval '1 month')::date - 1 END)`;
@@ -202,12 +205,12 @@ export async function listBudgets(
 // Every budget change runs in one transaction, and changes to one owner's
 // budgets of one kind are serialized, so spans are read and rewritten without
 // another change interleaving. `apply` receives the owner, kind and period
-// start as $1–$3. The reply is the budget that then applies to the named
+// start as the statement parameters $1–$3. The reply is the budget that then applies to the named
 // period, read after the change commits, so it describes what was kept.
 async function changeBudgets(
   owner: string,
   request: SummaryRequest,
-  apply: (client: PoolClient, scope: string[], start: string) => Promise<void>,
+  apply: (client: PoolClient, params: string[], start: string) => Promise<void>,
 ) {
   const start = periodStart(request.kind, request.date);
   const client = await database().connect();
@@ -240,7 +243,7 @@ export function setRepeatingBudget(
   amount: bigint,
 ) {
   const { kind } = request;
-  return changeBudgets(owner, request, async (client, scope, start) => {
+  return changeBudgets(owner, request, async (client, params, start) => {
     const {
       rows: [containing],
     } = await client.query(
@@ -249,14 +252,14 @@ export function setRepeatingBudget(
       FROM budget WHERE owner_id=$1 AND period_kind=$2 AND repeats
       AND first_period_start <= $3::date
       AND (last_period_start IS NULL OR last_period_start >= $3::date)`,
-      scope,
+      params,
     );
     if (containing?.first === start)
       await client.query(
         `UPDATE budget SET amount_centavos=$4, updated_at=now()
         WHERE owner_id=$1 AND period_kind=$2 AND repeats
         AND first_period_start=$3::date AND amount_centavos<>$4`,
-        [...scope, amount.toString()],
+        [...params, amount.toString()],
       );
     else {
       let until: string | null;
@@ -275,7 +278,7 @@ export function setRepeatingBudget(
           `SELECT to_char(min(first_period_start),'YYYY-MM-DD') AS first
           FROM budget WHERE owner_id=$1 AND period_kind=$2 AND repeats
           AND first_period_start > $3::date`,
-          scope,
+          params,
         );
         until = next.first && shiftPeriod(kind, next.first, -1);
       }
@@ -283,13 +286,13 @@ export function setRepeatingBudget(
         `INSERT INTO budget(owner_id, period_kind, first_period_start,
           last_period_start, repeats, amount_centavos)
         VALUES ($1,$2,$3::date,$4::date,true,$5)`,
-        [...scope, until, amount.toString()],
+        [...params, until, amount.toString()],
       );
     }
     await client.query(
       `DELETE FROM budget WHERE owner_id=$1 AND period_kind=$2 AND NOT repeats
       AND first_period_start=$3::date`,
-      scope,
+      params,
     );
   });
 }
@@ -300,7 +303,7 @@ export function setOneOffBudget(
   request: SummaryRequest,
   amount: bigint,
 ) {
-  return changeBudgets(owner, request, async (client, scope) => {
+  return changeBudgets(owner, request, async (client, params) => {
     await client.query(
       `INSERT INTO budget(owner_id, period_kind, first_period_start,
         last_period_start, repeats, amount_centavos)
@@ -308,7 +311,7 @@ export function setOneOffBudget(
       ON CONFLICT (owner_id, period_kind, repeats, first_period_start)
       DO UPDATE SET amount_centavos=EXCLUDED.amount_centavos, updated_at=now()
       WHERE budget.amount_centavos<>EXCLUDED.amount_centavos`,
-      [...scope, amount.toString()],
+      [...params, amount.toString()],
     );
   });
 }
@@ -316,11 +319,11 @@ export function setOneOffBudget(
 // applies to that period again. Removing one that does not exist changes
 // nothing.
 export function removeOneOffBudget(owner: string, request: SummaryRequest) {
-  return changeBudgets(owner, request, async (client, scope) => {
+  return changeBudgets(owner, request, async (client, params) => {
     await client.query(
       `DELETE FROM budget WHERE owner_id=$1 AND period_kind=$2 AND NOT repeats
       AND first_period_start=$3::date`,
-      scope,
+      params,
     );
   });
 }
@@ -329,17 +332,17 @@ export function removeOneOffBudget(owner: string, request: SummaryRequest) {
 // the period before. Ended periods keep their budgets and one-off budgets are
 // untouched, so stopping again, or when nothing repeats, changes nothing.
 export function stopRepeatingBudget(owner: string, request: SummaryRequest) {
-  return changeBudgets(owner, request, async (client, scope, start) => {
+  return changeBudgets(owner, request, async (client, params, start) => {
     await client.query(
       `DELETE FROM budget WHERE owner_id=$1 AND period_kind=$2 AND repeats
       AND first_period_start >= $3::date`,
-      scope,
+      params,
     );
     await client.query(
       `UPDATE budget SET last_period_start=$4::date, updated_at=now()
       WHERE owner_id=$1 AND period_kind=$2 AND repeats
       AND (last_period_start IS NULL OR last_period_start >= $3::date)`,
-      [...scope, shiftPeriod(request.kind, start, -1)],
+      [...params, shiftPeriod(request.kind, start, -1)],
     );
   });
 }

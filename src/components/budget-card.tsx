@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { periodKindDetails, type Summary } from "@/lib/financial";
+import {
+  budgetSource,
+  periodHasEnded,
+  periodKindDetails,
+  type Summary,
+} from "@/lib/financial";
 import { BudgetFigures } from "@/components/budget-figures";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +22,6 @@ import {
 export function BudgetCard({ summary }: { summary: Summary }) {
   const { budget } = summary;
   const noun = periodKindDetails[summary.kind].label.toLowerCase();
-  const ended = summary.end < summary.today;
   return (
     <section aria-label="Budget">
       <Card>
@@ -27,9 +31,9 @@ export function BudgetCard({ summary }: { summary: Summary }) {
           </CardTitle>
           <CardDescription>
             {budget
-              ? `${budget.repeats ? "Repeating" : "One-off"} budget.${
-                  ended
-                    ? ` This ${noun} ended ${budget.overBudget ? "over" : "under"} budget.`
+              ? `${budgetSource(budget)} budget.${
+                  periodHasEnded(summary, summary.today)
+                    ? ` It ended ${budget.overBudget ? "over" : "under"} budget.`
                     : ""
                 }`
               : `No budget for this ${noun}.`}

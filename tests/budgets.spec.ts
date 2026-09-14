@@ -20,7 +20,10 @@ test.beforeEach(async () => {
     "TRUNCATE budget, financial_movement, category, category_seed",
   );
 });
+// Other specs sign in as the same owner and compare whole summaries, so no
+// budget outlives this file.
 test.afterAll(async () => {
+  await pool.query("TRUNCATE budget");
   await pool.end();
   await resetClock();
 });
@@ -1633,14 +1636,14 @@ test("a one-off budget set from the form is listed under Upcoming one-offs, and 
   await expect(
     page.getByRole("heading", { name: "Aug 31, 2026 – Sep 6, 2026", level: 1 }),
   ).toBeVisible();
-  await expect(card).toContainText("This week ended over budget.");
+  await expect(card).toContainText("Repeating budget. It ended over budget.");
   await expect(card.getByText("Over by MXN 300.00", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Previous", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Aug 24, 2026 – Aug 30, 2026", level: 1 }),
   ).toBeVisible();
   await expect(card).toContainText(
-    "One-off budget. This week ended under budget.",
+    "One-off budget. It ended under budget.",
   );
   await expect(
     card.getByText("Under by MXN 600.00", { exact: true }),

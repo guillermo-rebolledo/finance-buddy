@@ -2,6 +2,7 @@ import {
   leftPerDayText,
   budgetStanding,
   money,
+  periodHasEnded,
   type BudgetView,
 } from "@/lib/financial";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,7 @@ export function BudgetFigures({
           budget.overBudget && "text-destructive",
         )}
       >
-        {budgetStanding(budget, budget.end < today)}
+        {budgetStanding(budget, periodHasEnded(budget, today))}
       </p>
       {perDay && (
         <div className="flex flex-col gap-0.5">

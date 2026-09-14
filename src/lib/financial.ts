@@ -212,7 +212,7 @@ export const periodKindDetails: Record<
     budgetPhrase: (period: Period, today: string) => string;
     // How a repeating span names a period by its first day, such as "the week
     // of 7 Sep".
-    budgetStart: (start: string, today: string) => string;
+    spanStartName: (start: string, today: string) => string;
   }
 > = {
   day: {
@@ -226,7 +226,7 @@ export const periodKindDetails: Record<
     tick: (period) => dayTick.format(atNoon(period.start)),
     budgetLabel: budgetDay,
     budgetPhrase: (period, today) => `on ${budgetDay(period, today)}`,
-    budgetStart: budgetDate,
+    spanStartName: budgetDate,
   },
   week: {
     label: "Week",
@@ -245,7 +245,7 @@ export const periodKindDetails: Record<
     budgetLabel: (period, today) => `Week of ${budgetWeek(period, today)}`,
     budgetPhrase: (period, today) =>
       `for the week of ${budgetWeek(period, today)}`,
-    budgetStart: (start, today) => `the week of ${budgetDate(start, today)}`,
+    spanStartName: (start, today) => `the week of ${budgetDate(start, today)}`,
   },
   month: {
     label: "Month",
@@ -269,7 +269,7 @@ export const periodKindDetails: Record<
     tick: (period) => monthTick.format(atNoon(period.start)),
     budgetLabel: (period) => monthName.format(atNoon(period.start)),
     budgetPhrase: (period) => `for ${monthName.format(atNoon(period.start))}`,
-    budgetStart: (start) => monthName.format(atNoon(start)),
+    spanStartName: (start) => monthName.format(atNoon(start)),
   },
 };
 export const periodKinds = Object.keys(periodKindDetails) as PeriodKind[];
@@ -596,8 +596,12 @@ export function leftPerDayText(budget: BudgetView) {
 // A period has ended once its last day is before today in Mexico City. Its
 // budget is then history: it still reports how the period went, but nothing
 // sets, changes or stops it.
-export function periodHasEnded(request: SummaryRequest, today: string) {
-  return summaryPeriod(request.kind, request.date).end < today;
+export function periodHasEnded(period: Period, today: string) {
+  return period.end < today;
+}
+// Where a budget comes from, as every list and card labels it.
+export function budgetSource(budget: { repeats: boolean }) {
+  return budget.repeats ? "Repeating" : "One-off";
 }
 // How a repeating span reads, from the start of its first period through the
 // start of its last, when it has one: "From the week of 7 Sep".
@@ -605,7 +609,7 @@ export function spanLabel(
   span: { kind: PeriodKind; start: string; until: string | null },
   today: string,
 ) {
-  const name = periodKindDetails[span.kind].budgetStart;
+  const name = periodKindDetails[span.kind].spanStartName;
   return `From ${name(span.start, today)}${span.until === null ? "" : ` through ${name(span.until, today)}`}`;
 }
 export type BudgetInput = { amount: string; oneOff: boolean };
@@ -629,9 +633,13 @@ export function validateBudget(input: unknown): BudgetError | null {
 // Removing a budget names how far it reaches: "period" removes the named
 // period's one-off budget, and "onward" stops the repeating budget from it.
 export type BudgetRemoval = { scope: "period" | "onward" };
+export type BudgetRemovalError = {
+  field: keyof BudgetRemoval | null;
+  message: string;
+};
 export function validateBudgetRemoval(
   input: unknown,
-): { field: "scope" | null; message: string } | null {
+): BudgetRemovalError | null {
   if (!input || typeof input !== "object")
     return { field: null, message: "Choose which budget to remove." };
   const { scope } = input as Record<string, unknown>;

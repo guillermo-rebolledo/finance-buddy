@@ -4,6 +4,7 @@ import { Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import {
   budgetDate,
+  budgetSource,
   budgetStanding,
   isCalendarDate,
   money,
@@ -106,12 +107,17 @@ async function removeBudget(
     toast.error(unconfirmed);
   }
 }
-function announceOneOffRemoved(budget: BudgetView | null) {
+// Removes a period's one-off budget and says what applies to it now. Resolves
+// to whether the removal was confirmed.
+async function removeOneOff(kind: PeriodKind, date: string) {
+  const applies = await removeBudget(kind, date, "period");
+  if (applies === undefined) return false;
   toast.success(
-    budget
-      ? `One-off budget removed. The repeating budget of ${money(budget.amount)} applies again.`
+    applies
+      ? `One-off budget removed. The repeating budget of ${money(applies.amount)} applies again.`
       : "One-off budget removed.",
   );
+  return true;
 }
 
 // Budgets are set and read here: the budgets in effect today, the repeating
@@ -274,7 +280,7 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
                           {budget && (
                             <CardAction>
                               <Badge variant="secondary">
-                                {budget.repeats ? "Repeating" : "One-off"}
+                                {budgetSource(budget)}
                               </Badge>
                             </CardAction>
                           )}
@@ -405,7 +411,7 @@ function RepeatingBudgets({
     span.start > list.today ? span.start : list.today;
   const fromText = (span: Span) =>
     span.start > list.today
-      ? periodKindDetails[span.kind].budgetStart(span.start, list.today)
+      ? periodKindDetails[span.kind].spanStartName(span.start, list.today)
       : periodKindDetails[span.kind].current.toLowerCase();
 
   async function stop(span: Span) {
@@ -527,10 +533,7 @@ function UpcomingBudgets({
     if (removing) return;
     setRemoving(`${budget.kind}:${budget.start}`);
     try {
-      const applies = await removeBudget(budget.kind, budget.start, "period");
-      if (applies === undefined) return;
-      announceOneOffRemoved(applies);
-      await onRemoved();
+      if (await removeOneOff(budget.kind, budget.start)) await onRemoved();
     } finally {
       setRemoving("");
     }
@@ -624,7 +627,7 @@ function PastBudgets({
                       )}
                     </span>
                     <Badge variant="secondary">
-                      {budget.repeats ? "Repeating" : "One-off"}
+                      {budgetSource(budget)}
                     </Badge>
                   </span>
                   <span className="break-all text-sm text-muted-foreground tabular-nums">
@@ -754,14 +757,11 @@ function BudgetForm({
       setSaving(false);
     }
   }
-  async function removeOneOff() {
+  async function remove() {
     if (busy) return;
     setRemoving(true);
     try {
-      const applies = await removeBudget(period.kind, period.date, "period");
-      if (applies === undefined) return;
-      announceOneOffRemoved(applies);
-      await onSaved();
+      if (await removeOneOff(period.kind, period.date)) await onSaved();
     } finally {
       setRemoving(false);
     }
@@ -888,7 +888,7 @@ function BudgetForm({
                   variant="outline"
                   size="lg"
                   disabled={busy || resolving}
-                  onClick={removeOneOff}
+                  onClick={remove}
                 >
                   {removing ? "Removing…" : "Remove one-off"}
                 </Button>

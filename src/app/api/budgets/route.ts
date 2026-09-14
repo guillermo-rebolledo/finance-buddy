@@ -16,6 +16,7 @@ import {
   mexicoToday,
   parsePastCursor,
   periodHasEnded,
+  summaryPeriod,
   validateBudget,
   validateBudgetRemoval,
   type BudgetInput,
@@ -72,7 +73,8 @@ async function change(
       return jsonError("invalid_field", refused.message, {
         field: refused.field,
       });
-    if (periodHasEnded(requested.period, mexicoToday()))
+    const { kind, date } = requested.period;
+    if (periodHasEnded(summaryPeriod(kind, date), mexicoToday()))
       return jsonError(
         "period_ended",
         "This period has ended, so its budget stays as it was.",
