@@ -1,9 +1,11 @@
 import "server-only";
+import type { PoolClient } from "pg";
 import { database } from "./database";
 import {
   budgetFigures,
   decimal,
   mexicoToday,
+  pastCursor,
   periodKinds,
   periodStart,
   shiftPeriod,
@@ -11,6 +13,7 @@ import {
   totalsOf,
   type BudgetList,
   type BudgetView,
+  type PastCursor,
   type Period,
   type PeriodKind,
   type SummaryRequest,
@@ -45,97 +48,136 @@ export function budgetOf(
       )
     : null;
 }
-// One statement reads the budget and the period's movements, so its total
-// expenses are exactly what the summary of that snapshot reports.
-export async function budgetView(owner: string, request: SummaryRequest) {
-  const period = summaryPeriod(request.kind, request.date);
-  const {
-    rows: [data],
-  } = await database().query(
-    `SELECT
-    (SELECT row_to_json(b) FROM (${periodBudgetQuery("$1", "$2", "$3")}) b) AS budget,
+type KindPeriod = Period & { kind: PeriodKind };
+type PeriodFigures = KindPeriod & {
+  centavos: string | null;
+  repeats: boolean | null;
+  movements: { kind: string; centavos: string }[];
+};
+// Budget views for many periods from one statement: each period's budget,
+// resolved as periodBudgetQuery resolves it, beside its movements summed per
+// type, which totalsOf turns into total expenses exactly as a summary does.
+// `periods` selects kind, start and end, and may use $1, the owner.
+function periodFiguresQuery(periods: string) {
+  return `SELECT p.kind, to_char(p.start,'YYYY-MM-DD') AS start,
+    to_char(p."end",'YYYY-MM-DD') AS "end", b.centavos, b.repeats,
     COALESCE((SELECT json_agg(m) FROM (
-      SELECT kind, amount_centavos::text AS centavos FROM financial_movement
-      WHERE owner_id=$1 AND movement_date BETWEEN $3::date AND $4::date
-    ) m), '[]') AS movements`,
-    [owner, request.kind, period.start, period.end],
-  );
+      SELECT kind, sum(amount_centavos)::text AS centavos FROM financial_movement
+      WHERE owner_id=$1 AND movement_date BETWEEN p.start AND p."end"
+      GROUP BY kind
+    ) m), '[]') AS movements
+  FROM (${periods}) p
+  LEFT JOIN LATERAL (${periodBudgetQuery("$1", "p.kind", "p.start")}) b ON true`;
+}
+function viewOf(figures: PeriodFigures, today: string) {
   return budgetOf(
-    data.budget,
-    request.kind,
-    period,
-    totalsOf(data.movements).expenses,
-    mexicoToday(),
+    figures.centavos === null ? null : (figures as StoredBudget),
+    figures.kind,
+    figures,
+    totalsOf(figures.movements).expenses,
+    today,
   );
 }
-// Today's day, week and month, each with its budget. One statement reads the
-// three budgets and every movement across the three periods, so each view's
-// total expenses are exactly what that period's summary reports.
-export async function listBudgets(owner: string): Promise<BudgetList> {
+// The budget views of the periods named, in the order named, each null
+// without a budget.
+async function viewsFor(owner: string, periods: KindPeriod[], today: string) {
+  const { rows } = await database().query<PeriodFigures>(
+    periodFiguresQuery(
+      `SELECT * FROM json_to_recordset($2::json) AS p(kind text, start date, "end" date)`,
+    ),
+    [owner, JSON.stringify(periods)],
+  );
+  return periods.map(({ kind, start }) =>
+    viewOf(rows.find((row) => row.kind === kind && row.start === start)!, today),
+  );
+}
+// The day, week and month containing a date, shortest first.
+function periodsOn(date: string): KindPeriod[] {
+  return periodKinds.map((kind) => ({ kind, ...summaryPeriod(kind, date) }));
+}
+export async function budgetView(owner: string, request: SummaryRequest) {
+  const [view] = await viewsFor(
+    owner,
+    [{ kind: request.kind, ...summaryPeriod(request.kind, request.date) }],
+    mexicoToday(),
+  );
+  return view;
+}
+// The budget an expense or refund counts against: that of the shortest period
+// containing its movement date that has a budget, or null when none does.
+export async function entryBudget(owner: string, date: string) {
+  const views = await viewsFor(owner, periodsOn(date), mexicoToday());
+  return views.find(Boolean) ?? null;
+}
+// Kinds sort day, week, month wherever periods of different kinds meet.
+const kindRank = (kind: string) =>
+  `array_position(ARRAY[${periodKinds.map((name) => `'${name}'`).join(",")}], ${kind})`;
+// A period's last day from its kind and first day, as summaryPeriod resolves it.
+const periodEnd = (kind: string, start: string) =>
+  `(CASE ${kind} WHEN 'day' THEN ${start} WHEN 'week' THEN ${start} + 6
+    ELSE (${start} + interval '1 month')::date - 1 END)`;
+export const pastPageSize = 20;
+// Today's day, week and month, each with its budget; the repeating spans still
+// in effect or scheduled; one-off budgets for future periods; and a page of
+// ended periods that had a budget, after `before` when given.
+export async function listBudgets(
+  owner: string,
+  before: PastCursor | null = null,
+): Promise<BudgetList> {
   const today = mexicoToday();
-  const periods = periodKinds.map((kind) => ({
-    kind,
-    period: summaryPeriod(kind, today),
-  }));
-  const from = periods.map(({ period }) => period.start).sort()[0];
-  const to = periods.map(({ period }) => period.end).sort().at(-1)!;
-  const values = [owner, from, to];
-  // Each value is bound where it is used, so the statement names its own
-  // placeholders instead of counting them.
-  const bind = (value: string) => `$${values.push(value)}`;
-  const budgets = periods.map(
-    ({ kind, period }) =>
-      `(SELECT row_to_json(b) FROM (${periodBudgetQuery("$1", bind(kind), bind(period.start))}) b) AS "${kind}",`,
+  const periods = periodsOn(today);
+  const views = await viewsFor(owner, periods, today);
+  const { rows: upcoming } = await database().query<PeriodFigures>(
+    `${periodFiguresQuery(
+      `SELECT period_kind AS kind, first_period_start AS start,
+        ${periodEnd("period_kind", "first_period_start")} AS "end"
+      FROM budget WHERE owner_id=$1 AND NOT repeats AND first_period_start > $2::date`,
+    )} ORDER BY p.start, ${kindRank("p.kind")}`,
+    [owner, today],
   );
-  const {
-    rows: [data],
-  } = await database().query(
-    `SELECT
-    ${budgets.join("\n")}
-    COALESCE((SELECT json_agg(m) FROM (
-      SELECT kind, amount_centavos::text AS centavos,
-        to_char(movement_date,'YYYY-MM-DD') AS date
-      FROM financial_movement
-      WHERE owner_id=$1 AND movement_date BETWEEN $2::date AND $3::date
-    ) m), '[]') AS movements,
-    COALESCE((SELECT json_agg(r ORDER BY r.start) FROM (
-      SELECT period_kind AS kind, to_char(first_period_start,'YYYY-MM-DD') AS start,
-        amount_centavos::text AS centavos, to_char(last_period_start,'YYYY-MM-DD') AS until
-      FROM budget WHERE owner_id=$1 AND repeats
-    ) r), '[]') AS repeating`,
-    values,
+  // Every period a budget row covered, one-off or repeating, listed once and
+  // capped at today, since a period starting later has not ended. One more
+  // than a page is read to tell whether another page follows.
+  const { rows: past } = await database().query<PeriodFigures>(
+    `${periodFiguresQuery(
+      `SELECT g.kind, g.start, e."end" FROM (
+        SELECT DISTINCT b.period_kind AS kind, s.start::date AS start
+        FROM budget b CROSS JOIN LATERAL generate_series(
+          b.first_period_start::timestamp,
+          LEAST(COALESCE(b.last_period_start, $2::date), $2::date)::timestamp,
+          ('1 ' || b.period_kind)::interval) AS s(start)
+        WHERE b.owner_id=$1
+      ) g CROSS JOIN LATERAL (SELECT ${periodEnd("g.kind", "g.start")} AS "end") e
+      WHERE e."end" < $2::date AND ($3::date IS NULL OR e."end" < $3::date
+        OR (e."end" = $3::date AND ${kindRank("g.kind")} > ${kindRank("$4::text")}))
+      ORDER BY e."end" DESC, ${kindRank("g.kind")} LIMIT ${pastPageSize + 1}`,
+    )} ORDER BY p."end" DESC, ${kindRank("p.kind")}`,
+    [owner, today, before?.end ?? null, before?.kind ?? null],
   );
-  const movements: { kind: string; centavos: string; date: string }[] =
-    data.movements;
+  const pastViews = past
+    .slice(0, pastPageSize)
+    .map((figures) => viewOf(figures, today))
+    .filter((view) => view !== null);
   const now = Object.fromEntries(
-    periods.map(({ kind, period }) => [
-      kind,
-      budgetOf(
-        data[kind],
-        kind,
-        period,
-        totalsOf(
-          movements.filter(
-            ({ date }) => date >= period.start && date <= period.end,
-          ),
-        ).expenses,
-        today,
-      ),
-    ]),
+    periods.map(({ kind }, index) => [kind, views[index]]),
   ) as BudgetList["now"];
-  // Repeating spans still in effect or scheduled: a span whose last period
-  // started before its kind's current period has ended and belongs to history.
-  const current = Object.fromEntries(
-    periods.map(({ kind, period }) => [kind, period.start]),
+  const { rows: spans } = await database().query<{
+    kind: PeriodKind;
+    start: string;
+    centavos: string;
+    until: string | null;
+  }>(
+    `SELECT period_kind AS kind, to_char(first_period_start,'YYYY-MM-DD') AS start,
+      amount_centavos::text AS centavos, to_char(last_period_start,'YYYY-MM-DD') AS until
+    FROM budget WHERE owner_id=$1 AND repeats ORDER BY first_period_start`,
+    [owner],
   );
-  const repeating = (
-    data.repeating as {
-      kind: PeriodKind;
-      start: string;
-      centavos: string;
-      until: string | null;
-    }[]
-  )
+  // A span whose last period started before its kind's current period has
+  // ended and belongs to history.
+  const current = Object.fromEntries(
+    periods.map(({ kind, start }) => [kind, start]),
+  );
+  const repeating = spans
     .filter(({ kind, until }) => until === null || until >= current[kind])
     .sort((a, b) => periodKinds.indexOf(a.kind) - periodKinds.indexOf(b.kind))
     .map(({ kind, start, centavos, until }) => ({
@@ -149,34 +191,56 @@ export async function listBudgets(owner: string): Promise<BudgetList> {
     currency: "MXN",
     now,
     repeating,
-    upcoming: [],
-    past: [],
-    nextBefore: null,
+    upcoming: upcoming
+      .map((figures) => viewOf(figures, today))
+      .filter((view) => view !== null),
+    past: pastViews,
+    nextBefore:
+      past.length > pastPageSize ? pastCursor(pastViews.at(-1)!) : null,
   };
+}
+// Every budget change runs in one transaction, and changes to one owner's
+// budgets of one kind are serialized, so spans are read and rewritten without
+// another change interleaving. `apply` receives the owner, kind and period
+// start as $1–$3. The reply is the budget that then applies to the named
+// period, read after the change commits, so it describes what was kept.
+async function changeBudgets(
+  owner: string,
+  request: SummaryRequest,
+  apply: (client: PoolClient, scope: string[], start: string) => Promise<void>,
+) {
+  const start = periodStart(request.kind, request.date);
+  const client = await database().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      [`budget:${owner}:${request.kind}`],
+    );
+    await apply(client, [owner, request.kind, start], start);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return budgetView(owner, request);
 }
 // Sets the repeating amount from one period onward. A span starting there takes
 // the new amount. A span that started earlier is closed at the period before,
-// and the new amount continues to that span's own end. Otherwise the new span
-// runs until the period before the next later span, or stays open. A one-off
-// budget on that period gives way; one-off budgets elsewhere are untouched.
-// Applying the same request again leaves the same budgets.
-export async function setRepeatingBudget(
+// and the new amount continues to that span's own end, so a later scheduled
+// change survives. Otherwise the new span runs until the period before the
+// next later span, or stays open. A one-off budget on that period gives way;
+// one-off budgets elsewhere are untouched. Applying the same request again
+// leaves the same budgets.
+export function setRepeatingBudget(
   owner: string,
   request: SummaryRequest,
   amount: bigint,
 ) {
   const { kind } = request;
-  const start = periodStart(kind, request.date);
-  const client = await database().connect();
-  try {
-    await client.query("BEGIN");
-    // Changes to one owner's budgets of one kind are serialized, so spans are
-    // read and rewritten without another change interleaving.
-    await client.query(
-      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-      [`budget:${owner}:${kind}`],
-    );
-    const scope = [owner, kind, start];
+  return changeBudgets(owner, request, async (client, scope, start) => {
     const {
       rows: [containing],
     } = await client.query(
@@ -227,13 +291,55 @@ export async function setRepeatingBudget(
       AND first_period_start=$3::date`,
       scope,
     );
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-  // Read after the change commits, so the reply describes what was kept.
-  return budgetView(owner, request);
+  });
+}
+// Sets or replaces one period's one-off budget, which takes precedence over the
+// repeating budget for that period only.
+export function setOneOffBudget(
+  owner: string,
+  request: SummaryRequest,
+  amount: bigint,
+) {
+  return changeBudgets(owner, request, async (client, scope) => {
+    await client.query(
+      `INSERT INTO budget(owner_id, period_kind, first_period_start,
+        last_period_start, repeats, amount_centavos)
+      VALUES ($1,$2,$3::date,$3::date,false,$4)
+      ON CONFLICT (owner_id, period_kind, repeats, first_period_start)
+      DO UPDATE SET amount_centavos=EXCLUDED.amount_centavos, updated_at=now()
+      WHERE budget.amount_centavos<>EXCLUDED.amount_centavos`,
+      [...scope, amount.toString()],
+    );
+  });
+}
+// Removes one period's one-off budget, so the repeating budget, if any,
+// applies to that period again. Removing one that does not exist changes
+// nothing.
+export function removeOneOffBudget(owner: string, request: SummaryRequest) {
+  return changeBudgets(owner, request, async (client, scope) => {
+    await client.query(
+      `DELETE FROM budget WHERE owner_id=$1 AND period_kind=$2 AND NOT repeats
+      AND first_period_start=$3::date`,
+      scope,
+    );
+  });
+}
+// Stops repeating from one period: every span starting there or later goes,
+// which removes the scheduled changes, and a span that started earlier ends at
+// the period before. Ended periods keep their budgets and one-off budgets are
+// untouched, so stopping again, or when nothing repeats, changes nothing.
+export function stopRepeatingBudget(owner: string, request: SummaryRequest) {
+  return changeBudgets(owner, request, async (client, scope, start) => {
+    await client.query(
+      `DELETE FROM budget WHERE owner_id=$1 AND period_kind=$2 AND repeats
+      AND first_period_start >= $3::date`,
+      scope,
+    );
+    await client.query(
+      `UPDATE budget SET last_period_start=$4::date, updated_at=now()
+      WHERE owner_id=$1 AND period_kind=$2 AND repeats
+      AND (last_period_start IS NULL OR last_period_start >= $3::date)`,
+      [...scope, shiftPeriod(request.kind, start, -1)],
+    );
+  });
 }

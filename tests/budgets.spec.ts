@@ -57,21 +57,172 @@ async function summary(page: Page, query = "") {
   expect(response.status()).toBe(200);
   return response.json();
 }
-async function record(page: Page, fields: Record<string, unknown>) {
-  const response = await page.request.post("/api/journal", {
+function entry(fields: Record<string, unknown>) {
+  return {
+    id: randomUUID(),
+    kind: "expense",
+    amount: "1.00",
+    date: "2026-09-09",
+    categoryId: null,
+    note: "",
+    ...fields,
+  };
+}
+async function record(
+  page: Page,
+  fields: Record<string, unknown>,
+  method: "post" | "patch" = "post",
+) {
+  const response = await page.request[method]("/api/journal", {
     headers: { Origin: appOrigin },
-    data: {
-      id: randomUUID(),
-      kind: "expense",
-      amount: "1.00",
-      date: "2026-09-09",
-      categoryId: null,
-      note: "",
-      ...fields,
-    },
+    data: entry(fields),
   });
   expect(response.status()).toBe(200);
+  return response.json();
 }
+
+test("saving an expense or refund replies with the budget of the shortest budgeted period containing its date", async ({
+  page,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  // Nothing budgeted: the reply is exactly what it always was.
+  expect(await record(page, { date: "2026-09-09", amount: "100" })).toEqual({
+    saved: true,
+  });
+  await setBudget(page, "?kind=week&date=2026-09-09", "2000");
+  await setBudget(page, "?kind=month&date=2026-09-09", "8000");
+
+  // No day budget, so the week is the shortest budgeted period, read after the
+  // entry commits; retrying the same request replies the same way.
+  const repeated = entry({ date: "2026-09-08", amount: "300" });
+  const first = await record(page, repeated);
+  expect(first).toEqual({
+    saved: true,
+    budget: {
+      kind: "week",
+      start: "2026-09-07",
+      end: "2026-09-13",
+      amount: "2000.00",
+      repeats: true,
+      expenses: "400.00",
+      remaining: "1600.00",
+      overBudget: false,
+      daysLeft: 5,
+      leftPerDay: "320.00",
+    },
+  });
+  expect(await record(page, repeated)).toEqual(first);
+
+  // A day budget from today is shorter than the week.
+  await setBudget(page, "?kind=day&date=2026-09-09", "500");
+  expect(
+    (await record(page, { date: "2026-09-09", amount: "200" })).budget,
+  ).toMatchObject({ kind: "day", expenses: "300.00", remaining: "200.00" });
+  // A refund's reply shows the room it gave back.
+  expect(
+    (await record(page, { date: "2026-09-09", kind: "refund", amount: "50" }))
+      .budget,
+  ).toMatchObject({ kind: "day", expenses: "250.00", remaining: "250.00" });
+  // Yesterday had no day budget, so the week answers, now overspent.
+  expect(
+    (await record(page, { date: "2026-09-08", amount: "1900" })).budget,
+  ).toMatchObject({
+    kind: "week",
+    expenses: "2450.00",
+    remaining: "-450.00",
+    overBudget: true,
+    leftPerDay: null,
+  });
+  // Income never carries a budget.
+  expect(
+    await record(page, { date: "2026-09-09", kind: "income", amount: "5000" }),
+  ).toEqual({ saved: true });
+
+  // A past-dated expense reports its own period: last week had no budget, so
+  // its month does.
+  const past = entry({ date: "2026-09-03", amount: "40" });
+  expect((await record(page, past)).budget).toMatchObject({
+    kind: "month",
+    start: "2026-09-01",
+    expenses: "2490.00",
+    remaining: "5510.00",
+    daysLeft: 22,
+    leftPerDay: "250.45",
+  });
+  // August has no budget of any kind.
+  expect(await record(page, { date: "2026-08-20", amount: "10" })).toEqual({
+    saved: true,
+  });
+
+  // A correction reports the corrected entry: moved to today as a refund, then
+  // changed into income.
+  const moved = await record(
+    page,
+    { ...past, date: "2026-09-09", kind: "refund" },
+    "patch",
+  );
+  expect(moved.budget).toMatchObject({
+    kind: "day",
+    expenses: "210.00",
+    remaining: "290.00",
+  });
+  expect(moved.budget).toEqual(
+    (await summary(page, "?kind=day&date=2026-09-09")).budget,
+  );
+  expect(
+    await record(page, { ...past, date: "2026-09-09", kind: "income" }, "patch"),
+  ).toEqual({ saved: true });
+
+  // A native client receives the same budget after recording an expense.
+  const { bearer } = await nativeSignIn();
+  await moveClockTo(midday);
+  const response = await nativeClient(bearer)("/api/journal", {
+    method: "POST",
+    body: entry({ date: "2026-09-09", amount: "10" }),
+  });
+  expect(response.status).toBe(200);
+  expect((await response.json()).budget).toMatchObject({
+    kind: "day",
+    expenses: "260.00",
+    remaining: "240.00",
+  });
+});
+
+test("the confirmation after recording an expense says how much of its budget is left", async ({
+  page,
+}, testInfo) => {
+  await atMidday(page);
+  await setBudget(page, "?kind=week&date=2026-09-09", "2000");
+  await page.goto("/");
+  const add = async (amount: string, date?: string) => {
+    await page.getByRole("button", { name: "Add entry", exact: true }).click();
+    await choose(page, "Type", "Expense");
+    await page.getByLabel("Amount (MXN)").fill(amount);
+    if (date) await page.getByLabel("Movement date").fill(date);
+    await page.getByRole("button", { name: "Save entry", exact: true }).click();
+  };
+  await add("300");
+  await expect(
+    notification(page, "Entry saved. MXN 1,700.00 left this week."),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("entry-toast-budget.png"),
+    fullPage: true,
+  });
+  // Neither last week nor September has a budget, so the confirmation carries
+  // no budget line.
+  await add("20", "2026-09-01");
+  const outside = notification(page, "outside the period you are viewing");
+  await expect(outside).toBeVisible();
+  await expect(outside).not.toContainText("left");
+  // Today's MXN 300 and MXN 150 exceed a MXN 400 day budget.
+  await setBudget(page, "?kind=day&date=2026-09-09", "400");
+  await add("150");
+  await expect(
+    notification(page, "Entry saved. Over by MXN 50.00 today."),
+  ).toBeVisible();
+});
 
 test("a repeating budget applies from its own period onward, and days, weeks and months are independent", async ({
   page,
@@ -536,7 +687,6 @@ test("setting a budget refuses unauthorized requests, unresolvable periods and i
     [{ amount: "10" }, "oneOff"],
     [{ amount: "10", oneOff: "false" }, "oneOff"],
     [{ amount: "10", oneOff: null }, "oneOff"],
-    [{ amount: "10", oneOff: true }, "oneOff"],
     ["not a budget", null],
   ] as const) {
     const response = await put(page, "?kind=week", data, {
@@ -845,4 +995,658 @@ test("the dashboard shows the selected period's budget read-only and follows the
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBe(true);
+});
+
+function del(
+  page: Page,
+  query: string,
+  data: unknown,
+  headers: Record<string, string> = { Origin: appOrigin },
+) {
+  return page.request.delete(`/api/budgets${query}`, { headers, data });
+}
+async function stopBudget(page: Page, query: string) {
+  const response = await del(page, query, { scope: "onward" });
+  expect(response.status()).toBe(200);
+  const reply = await response.json();
+  expect(reply.saved).toBe(true);
+  return reply.budget;
+}
+async function listed(page: Page) {
+  const response = await page.request.get("/api/budgets");
+  expect(response.status()).toBe(200);
+  return response.json();
+}
+
+test("changing a repeating budget from a period onward keeps ended periods and stops at the next scheduled change", async ({
+  page,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  const months = () =>
+    Promise.all(
+      ["2026-05-10", "2026-06-10", "2026-07-10", "2026-08-10", "2026-12-10"].map(
+        async (date) =>
+          (await summary(page, `?kind=month&date=${date}`)).budget?.amount ??
+          null,
+      ),
+    );
+  // In May: MXN 1,000 a month from May, and MXN 8,000 scheduled from August.
+  await moveClockTo("2026-05-15T18:00:00Z");
+  await setBudget(page, "?kind=month", "1000");
+  expect(
+    await setBudget(page, "?kind=month&date=2026-08-20", "8000"),
+  ).toMatchObject({
+    start: "2026-08-01",
+    amount: "8000.00",
+    repeats: true,
+    daysLeft: null,
+  });
+  expect(await months()).toEqual([
+    "1000.00",
+    "1000.00",
+    "1000.00",
+    "8000.00",
+    "8000.00",
+  ]);
+
+  // In June, a change from the current month applies now, leaves May with the
+  // amount it had, and stops before August's scheduled change.
+  await moveClockTo("2026-06-15T18:00:00Z");
+  const june = { amount: "3000", oneOff: false };
+  const changed = await (await put(page, "?kind=month", june)).json();
+  expect(changed).toEqual({
+    saved: true,
+    budget: {
+      kind: "month",
+      start: "2026-06-01",
+      end: "2026-06-30",
+      amount: "3000.00",
+      repeats: true,
+      expenses: "0.00",
+      remaining: "3000.00",
+      overBudget: false,
+      daysLeft: 16,
+      leftPerDay: "187.50",
+    },
+  });
+  expect(await (await put(page, "?kind=month", june)).json()).toEqual(changed);
+  expect(await months()).toEqual([
+    "1000.00",
+    "3000.00",
+    "3000.00",
+    "8000.00",
+    "8000.00",
+  ]);
+  // A change from a future month takes over from there, still before August.
+  await setBudget(page, "?kind=month&date=2026-07-31", "3500");
+  expect(await months()).toEqual([
+    "1000.00",
+    "3000.00",
+    "3500.00",
+    "8000.00",
+    "8000.00",
+  ]);
+  expect((await listed(page)).repeating).toEqual([
+    { kind: "month", start: "2026-06-01", amount: "3000.00", until: "2026-06-01" },
+    { kind: "month", start: "2026-07-01", amount: "3500.00", until: "2026-07-01" },
+    { kind: "month", start: "2026-08-01", amount: "8000.00", until: null },
+  ]);
+
+  // Ended periods are read-only, with or without a budget.
+  await expectRefusal(
+    await put(page, "?kind=month&date=2026-05-31", june),
+    "period_ended",
+    409,
+  );
+  await expectRefusal(
+    await del(page, "?kind=month&date=2026-05-31", { scope: "onward" }),
+    "period_ended",
+    409,
+  );
+  await expectRefusal(
+    await put(page, "?kind=day&date=2026-06-14", june),
+    "period_ended",
+    409,
+  );
+  // 23:59 on 30 June in Mexico City still changes June; a minute later it
+  // has ended.
+  await moveClockTo("2026-07-01T05:59:00Z");
+  expect(await setBudget(page, "?kind=month", "3100")).toMatchObject({
+    start: "2026-06-01",
+    amount: "3100.00",
+    daysLeft: 1,
+    leftPerDay: "3100.00",
+  });
+  await moveClockTo("2026-07-01T06:00:00Z");
+  await expectRefusal(
+    await put(page, "?kind=month&date=2026-06-30", june),
+    "period_ended",
+    409,
+  );
+  expect(await months()).toEqual([
+    "1000.00",
+    "3100.00",
+    "3500.00",
+    "8000.00",
+    "8000.00",
+  ]);
+});
+
+test("stopping a repeating budget ends it and its scheduled changes from that period, while ended periods keep theirs", async ({
+  page,
+  request,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  const amountOn = async (query: string) =>
+    (await summary(page, query)).budget?.amount ?? null;
+  await moveClockTo("2026-07-15T18:00:00Z");
+  await setBudget(page, "?kind=week", "700");
+  await setBudget(page, "?kind=week&date=2026-08-05", "900");
+  await setBudget(page, "?kind=day", "100");
+
+  // A week later, stopping from the current week ends the budget begun the
+  // week before and removes the change scheduled for August.
+  await moveClockTo("2026-07-22T18:00:00Z");
+  const stopped = await (
+    await del(page, "?kind=week", { scope: "onward" })
+  ).json();
+  expect(stopped).toEqual({ saved: true, budget: null });
+  expect(
+    await (await del(page, "?kind=week", { scope: "onward" })).json(),
+  ).toEqual(stopped);
+  expect(
+    await Promise.all(
+      ["2026-07-15", "2026-07-22", "2026-08-05", "2026-12-01"].map((date) =>
+        amountOn(`?kind=week&date=${date}`),
+      ),
+    ),
+  ).toEqual(["700.00", null, null, null]);
+  // Days are budgeted independently, so the day budget goes on until stopped.
+  expect(await amountOn("?kind=day&date=2026-07-22")).toBe("100.00");
+  expect(await stopBudget(page, "?kind=day")).toBeNull();
+  expect(await amountOn("?kind=day&date=2026-07-21")).toBe("100.00");
+  expect(await amountOn("?kind=day&date=2026-07-22")).toBeNull();
+
+  // A budget that starts in the period stopped from goes entirely.
+  await setBudget(page, "?kind=week", "500");
+  expect(await stopBudget(page, "?kind=week&date=2026-07-26")).toBeNull();
+  expect(await amountOn("?kind=week&date=2026-07-22")).toBeNull();
+  expect(await amountOn("?kind=week&date=2026-07-15")).toBe("700.00");
+  expect((await listed(page)).repeating).toEqual([]);
+  // Stopping when nothing repeats changes nothing.
+  expect(await stopBudget(page, "?kind=month")).toBeNull();
+
+  await expectRefusal(
+    await request.delete("/api/budgets", {
+      headers: { Origin: appOrigin },
+      data: { scope: "onward" },
+    }),
+    "unauthenticated",
+    401,
+  );
+  await expectRefusal(
+    await del(page, "?kind=week", { scope: "onward" }, {
+      Origin: "https://attacker.example",
+    }),
+    "request_not_allowed",
+    403,
+  );
+  await expectRefusal(
+    await del(page, "?kind=quarter", { scope: "onward" }),
+    "invalid_period",
+    400,
+  );
+  for (const [data, field] of [
+    [{ scope: "all" }, "scope"],
+    [{}, "scope"],
+    [{ scope: null }, "scope"],
+    ["not a removal", null],
+  ] as const) {
+    const response = await del(page, "?kind=week", data, {
+      Origin: appOrigin,
+      "Content-Type": "application/json",
+    });
+    expect(response.status()).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "invalid_field",
+      field,
+    });
+  }
+});
+
+test("the Repeating section changes a repeating budget from its row and stops it once confirmed", async ({
+  page,
+}, testInfo) => {
+  await atMidday(page);
+  await setBudget(page, "?kind=week&date=2026-09-09", "2000");
+  await setBudget(page, "?kind=week&date=2026-09-21", "2500");
+  await page.goto("/budgets");
+  const repeating = page.getByRole("region", { name: "Repeating", exact: true });
+  const rows = repeating.getByRole("listitem");
+  await expect(rows).toHaveText([
+    /MXN 2,000\.00 every week\s*From the week of 7 Sep through the week of 14 Sep/,
+    /MXN 2,500\.00 every week\s*From the week of 21 Sep/,
+  ]);
+
+  // Change opens the form on the row's current week with its amount.
+  await rows
+    .filter({ hasText: "MXN 2,000.00" })
+    .getByRole("button", { name: "Change", exact: true })
+    .click();
+  const form = page.getByRole("region", { name: "Set budget", exact: true });
+  await expect(form.getByText("Week of 7–13 Sep", { exact: true })).toBeVisible();
+  const amount = form.getByLabel("Amount (MXN)", { exact: true });
+  await expect(amount).toHaveValue("2000.00");
+  await amount.fill("2200");
+  await form.getByRole("button", { name: "Save budget" }).click();
+  await expect(
+    notification(page, "Budget of MXN 2,200.00 saved for every week from 7 Sep."),
+  ).toBeVisible();
+  await expect(rows).toHaveText([
+    /MXN 2,200\.00 every week/,
+    /MXN 2,500\.00 every week/,
+  ]);
+  await page.screenshot({
+    path: testInfo.outputPath("budgets-repeating.png"),
+    fullPage: true,
+  });
+
+  // Stop explains that scheduled changes go too, and does nothing until
+  // confirmed.
+  const stop = rows
+    .filter({ hasText: "MXN 2,200.00" })
+    .getByRole("button", { name: "Stop", exact: true });
+  await stop.click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText(
+    "No week budget repeats from this week on, and every change scheduled after it goes too.",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("budgets-stop-confirm.png"),
+    fullPage: true,
+  });
+  await dialog.getByRole("button", { name: "Keep budget" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(rows).toHaveCount(2);
+  await stop.click();
+  await dialog.getByRole("button", { name: "Stop budget" }).click();
+  await expect(
+    notification(page, "Week budget stopped from this week."),
+  ).toBeVisible();
+  await expect(repeating).toHaveCount(0);
+  await expect(page.getByText("No budgets yet", { exact: true })).toBeVisible();
+  expect((await summary(page, "?kind=week&date=2026-09-23")).budget).toBeNull();
+});
+
+test("a one-off budget replaces the repeating budget for its period only, and can be removed or made the repeating amount", async ({
+  page,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  const weekOf = async (date: string) => {
+    const { budget } = await summary(page, `?kind=week&date=${date}`);
+    return budget && [budget.amount, budget.repeats];
+  };
+  await setBudget(page, "?kind=week&date=2026-09-09", "2000");
+  const trip = { amount: "5000", oneOff: true };
+  const set = await (await put(page, "?kind=week&date=2026-09-16", trip)).json();
+  expect(set).toEqual({
+    saved: true,
+    budget: {
+      kind: "week",
+      start: "2026-09-14",
+      end: "2026-09-20",
+      amount: "5000.00",
+      repeats: false,
+      expenses: "0.00",
+      remaining: "5000.00",
+      overBudget: false,
+      daysLeft: null,
+      leftPerDay: null,
+    },
+  });
+  expect(await (await put(page, "?kind=week&date=2026-09-16", trip)).json()).toEqual(set);
+  // The repeating budget resumes the week after.
+  expect([
+    await weekOf("2026-09-09"),
+    await weekOf("2026-09-16"),
+    await weekOf("2026-09-23"),
+  ]).toEqual([
+    ["2000.00", true],
+    ["5000.00", false],
+    ["2000.00", true],
+  ]);
+
+  // Setting it again changes its amount; the current week and a later one can
+  // have their own one-off budgets too.
+  expect(
+    (
+      await (
+        await put(page, "?kind=week&date=2026-09-14", {
+          amount: "4500",
+          oneOff: true,
+        })
+      ).json()
+    ).budget,
+  ).toMatchObject({ start: "2026-09-14", amount: "4500.00", repeats: false });
+  expect(
+    (
+      await put(page, "?kind=week&date=2026-10-05", {
+        amount: "3000",
+        oneOff: true,
+      })
+    ).status(),
+  ).toBe(200);
+  await record(page, { date: "2026-09-08", amount: "200" });
+  expect(
+    (await (await put(page, "?kind=week", { amount: "1500", oneOff: true })).json())
+      .budget,
+  ).toMatchObject({
+    start: "2026-09-07",
+    amount: "1500.00",
+    repeats: false,
+    remaining: "1300.00",
+    daysLeft: 5,
+    leftPerDay: "260.00",
+  });
+  const list = await listed(page);
+  expect(list.now.week).toMatchObject({ amount: "1500.00", repeats: false });
+  expect(
+    list.upcoming.map((view: { kind: string; start: string; amount: string; repeats: boolean }) => [
+      view.kind,
+      view.start,
+      view.amount,
+      view.repeats,
+    ]),
+  ).toEqual([
+    ["week", "2026-09-14", "4500.00", false],
+    ["week", "2026-10-05", "3000.00", false],
+  ]);
+  expect(list.repeating).toEqual([
+    { kind: "week", start: "2026-09-07", amount: "2000.00", until: null },
+  ]);
+
+  // Removing a one-off budget lets the repeating budget apply again, and
+  // removing one that is already gone changes nothing.
+  const removed = await (await del(page, "?kind=week", { scope: "period" })).json();
+  expect(removed).toMatchObject({
+    saved: true,
+    budget: { amount: "2000.00", repeats: true, remaining: "1800.00" },
+  });
+  expect(
+    await (await del(page, "?kind=week", { scope: "period" })).json(),
+  ).toEqual(removed);
+
+  // Unticking One-off makes its amount the repeating amount from that week
+  // onward, leaving other one-off budgets alone.
+  expect(
+    await setBudget(page, "?kind=week&date=2026-09-16", "4500"),
+  ).toMatchObject({ start: "2026-09-14", amount: "4500.00", repeats: true });
+  expect([
+    await weekOf("2026-09-09"),
+    await weekOf("2026-09-23"),
+    await weekOf("2026-10-05"),
+    await weekOf("2026-10-12"),
+  ]).toEqual([
+    ["2000.00", true],
+    ["4500.00", true],
+    ["3000.00", false],
+    ["4500.00", true],
+  ]);
+
+  // Stopping the repeating budget keeps the one-off budgets planned ahead.
+  expect(await stopBudget(page, "?kind=week")).toBeNull();
+  expect([await weekOf("2026-09-23"), await weekOf("2026-10-05")]).toEqual([
+    null,
+    ["3000.00", false],
+  ]);
+  expect(
+    (await listed(page)).upcoming.map((view: { start: string }) => view.start),
+  ).toEqual(["2026-10-05"]);
+
+  // An ended week's one-off budget is read-only.
+  await expectRefusal(
+    await put(page, "?kind=week&date=2026-09-01", trip),
+    "period_ended",
+    409,
+  );
+  await expectRefusal(
+    await del(page, "?kind=week&date=2026-09-01", { scope: "period" }),
+    "period_ended",
+    409,
+  );
+});
+
+test("past budgets list ended periods newest first, day before week before month, twenty at a time", async ({
+  page,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  // From Monday 1 June: MXN 10 a day, MXN 100 a week, MXN 1,000 a month, and a
+  // MXN 150 one-off budget for the week of 8 June.
+  await moveClockTo("2026-06-01T18:00:00Z");
+  await setBudget(page, "?kind=day", "10");
+  await setBudget(page, "?kind=week", "100");
+  await setBudget(page, "?kind=month", "1000");
+  expect(
+    (
+      await put(page, "?kind=week&date=2026-06-08", {
+        amount: "150",
+        oneOff: true,
+      })
+    ).status(),
+  ).toBe(200);
+  await record(page, { date: "2026-06-01", amount: "20" });
+  await moveClockTo("2026-07-01T18:00:00Z");
+
+  type View = { kind: string; start: string };
+  const names = (views: View[]) =>
+    views.map((view) => `${view.kind} ${view.start}`);
+  const days = (from: number, to: number) =>
+    Array.from(
+      { length: from - to + 1 },
+      (_, index) => `day 2026-06-${String(from - index).padStart(2, "0")}`,
+    );
+  const first = await listed(page);
+  expect(names(first.past)).toEqual([
+    "day 2026-06-30",
+    "month 2026-06-01",
+    "day 2026-06-29",
+    "day 2026-06-28",
+    "week 2026-06-22",
+    ...days(27, 21),
+    "week 2026-06-15",
+    ...days(20, 14),
+  ]);
+  // The week of 8 June also ends on the 14th, after that day, so the next page
+  // starts with it.
+  expect(first.nextBefore).toBe("2026-06-14_day");
+  const second = await (
+    await page.request.get(`/api/budgets?before=${first.nextBefore}`)
+  ).json();
+  expect(names(second.past)).toEqual([
+    "week 2026-06-08",
+    ...days(13, 7),
+    "week 2026-06-01",
+    ...days(6, 1),
+  ]);
+  expect(second.nextBefore).toBeNull();
+
+  const find = (views: View[], name: string) =>
+    views.find((view) => `${view.kind} ${view.start}` === name);
+  expect(find(second.past, "day 2026-06-01")).toEqual({
+    kind: "day",
+    start: "2026-06-01",
+    end: "2026-06-01",
+    amount: "10.00",
+    repeats: true,
+    expenses: "20.00",
+    remaining: "-10.00",
+    overBudget: true,
+    daysLeft: null,
+    leftPerDay: null,
+  });
+  expect(find(second.past, "week 2026-06-01")).toMatchObject({
+    amount: "100.00",
+    expenses: "20.00",
+    remaining: "80.00",
+    overBudget: false,
+  });
+  expect(find(second.past, "week 2026-06-08")).toMatchObject({
+    amount: "150.00",
+    repeats: false,
+    expenses: "0.00",
+  });
+  expect(find(first.past, "month 2026-06-01")).toEqual(
+    (await summary(page, "?kind=month&date=2026-06-10")).budget,
+  );
+
+  // Stopping keeps the history.
+  expect(await stopBudget(page, "?kind=day")).toBeNull();
+  expect(names((await listed(page)).past)).toEqual(names(first.past));
+  for (const before of [
+    "garbage",
+    "2026-02-30_day",
+    "2026-06-14_quarter",
+    "2026-06-14_day_week",
+    "",
+  ]) {
+    const response = await page.request.get(`/api/budgets?before=${before}`);
+    expect(response.status()).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "invalid_field",
+      field: "before",
+    });
+  }
+});
+
+test("a one-off budget set from the form is listed under Upcoming one-offs, and Past and the dashboard say how ended periods went", async ({
+  page,
+}, testInfo) => {
+  await atMidday(page);
+  // MXN 50 a day from 1 August, a MXN 1,000 one-off budget for the week of 24
+  // August, and MXN 2,000 a week from 31 August.
+  await moveClockTo("2026-08-01T18:00:00Z");
+  await setBudget(page, "?kind=day", "50");
+  await moveClockTo("2026-08-24T18:00:00Z");
+  expect(
+    (await put(page, "?kind=week", { amount: "1000", oneOff: true })).status(),
+  ).toBe(200);
+  await moveClockTo("2026-08-31T18:00:00Z");
+  await setBudget(page, "?kind=week", "2000");
+  await moveClockTo(midday);
+  await record(page, { date: "2026-08-24", amount: "400" });
+  await record(page, { date: "2026-09-01", amount: "2300" });
+
+  await page.goto("/budgets");
+  const past = page.getByRole("region", { name: "Past", exact: true });
+  const pastRows = past.getByRole("listitem");
+  await expect(pastRows).toHaveCount(20);
+  await expect(pastRows.first()).toContainText("Tuesday 8 Sep");
+  await expect(
+    pastRows.filter({ hasText: "Week of 31 Aug – 6 Sep" }),
+  ).toContainText("Over by MXN 300.00");
+  const tripWeek = pastRows.filter({ hasText: "Week of 24–30 Aug" });
+  await expect(tripWeek).toContainText("Under by MXN 600.00");
+  await expect(tripWeek).toContainText("One-off");
+  // Past is read-only: its only control loads more.
+  await expect(past.getByRole("button")).toHaveText(["Show more"]);
+  await page.screenshot({
+    path: testInfo.outputPath("budgets-past.png"),
+    fullPage: true,
+  });
+  const more = past.getByRole("button", { name: "Show more", exact: true });
+  await more.click();
+  await expect(pastRows).toHaveCount(40);
+  await more.click();
+  await expect(pastRows).toHaveCount(41);
+  await expect(more).toHaveCount(0);
+  await expect(pastRows.last()).toContainText("Saturday 1 Aug");
+
+  // A one-off budget for next week, from the form.
+  await page
+    .getByRole("button", { name: "Set budget", exact: true })
+    .first()
+    .click();
+  const form = page.getByRole("region", { name: "Set budget", exact: true });
+  const oneOff = form.getByRole("checkbox", {
+    name: "One-off (this period only)",
+  });
+  const amount = form.getByLabel("Amount (MXN)", { exact: true });
+  await expect(oneOff).not.toBeChecked();
+  await form.getByLabel("Date", { exact: true }).fill("2026-09-16");
+  await expect(form.getByText("Week of 14–20 Sep", { exact: true })).toBeVisible();
+  await expect(amount).toHaveValue("2000.00");
+  await oneOff.click();
+  await amount.fill("5000");
+  await expect(form).toContainText("applies to this period only");
+  await page.screenshot({
+    path: testInfo.outputPath("budgets-form-one-off.png"),
+    fullPage: true,
+  });
+  await form.getByRole("button", { name: "Save budget" }).click();
+  await expect(
+    notification(
+      page,
+      "One-off budget of MXN 5,000.00 saved for the week of 14–20 Sep.",
+    ),
+  ).toBeVisible();
+  const upcoming = page.getByRole("region", {
+    name: "Upcoming one-offs",
+    exact: true,
+  });
+  const planned = upcoming.getByRole("listitem");
+  await expect(planned).toHaveCount(1);
+  await expect(planned).toContainText("Week of 14–20 Sep");
+  await expect(planned).toContainText("MXN 5,000.00");
+  await page.screenshot({
+    path: testInfo.outputPath("budgets-upcoming.png"),
+    fullPage: true,
+  });
+
+  // Change opens it with One-off ticked; Remove lets the repeating budget back.
+  await planned.getByRole("button", { name: "Change", exact: true }).click();
+  await expect(form.getByText("Week of 14–20 Sep", { exact: true })).toBeVisible();
+  await expect(oneOff).toBeChecked();
+  await expect(amount).toHaveValue("5000.00");
+  await form.getByRole("button", { name: "Cancel" }).click();
+  await planned.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(
+    notification(
+      page,
+      "One-off budget removed. The repeating budget of MXN 2,000.00 applies again.",
+    ),
+  ).toBeVisible();
+  await expect(upcoming).toHaveCount(0);
+
+  // The dashboard card says how an ended week went, and where its budget came
+  // from.
+  await page.goto("/dashboard");
+  await expect(
+    page.getByRole("heading", { name: "This week", level: 1 }),
+  ).toBeVisible();
+  const card = page.getByRole("region", { name: "Budget", exact: true });
+  await expect(card).toContainText("Repeating budget.");
+  await page.getByRole("button", { name: "Previous", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Aug 31, 2026 – Sep 6, 2026", level: 1 }),
+  ).toBeVisible();
+  await expect(card).toContainText("This week ended over budget.");
+  await expect(card.getByText("Over by MXN 300.00", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Previous", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Aug 24, 2026 – Aug 30, 2026", level: 1 }),
+  ).toBeVisible();
+  await expect(card).toContainText(
+    "One-off budget. This week ended under budget.",
+  );
+  await expect(
+    card.getByText("Under by MXN 600.00", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("budget-card-ended.png"),
+    fullPage: true,
+  });
 });

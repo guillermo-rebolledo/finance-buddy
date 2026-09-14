@@ -6,10 +6,16 @@ import {
 } from "@/lib/financial";
 import { cn } from "@/lib/utils";
 
-// One budget's figures, the same wherever a budget is shown: what is left or
-// how far over, left per day where it applies, then the budget and the total
-// expenses it is measured against.
-export function BudgetFigures({ budget }: { budget: BudgetView }) {
+// One budget's figures, the same wherever a budget is shown: what is left, how
+// far over, or for an ended period how it ended; left per day where it
+// applies; then the budget and the total expenses it is measured against.
+export function BudgetFigures({
+  budget,
+  today,
+}: {
+  budget: BudgetView;
+  today: string;
+}) {
   const perDay = leftPerDayText(budget);
   return (
     <>
@@ -19,7 +25,7 @@ export function BudgetFigures({ budget }: { budget: BudgetView }) {
           budget.overBudget && "text-destructive",
         )}
       >
-        {budgetStanding(budget)}
+        {budgetStanding(budget, budget.end < today)}
       </p>
       {perDay && (
         <div className="flex flex-col gap-0.5">

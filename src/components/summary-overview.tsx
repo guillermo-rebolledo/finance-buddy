@@ -4,6 +4,7 @@ import Link from "next/link";
 import { EllipsisIcon, PencilIcon, Plus, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import {
+  budgetLine,
   entryKindDetail,
   entryKinds,
   entryKindDetails,
@@ -221,11 +222,14 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       setUncertain(false);
       // A moved entry leaves one period and enters another, so the reply says
       // where it went rather than implying the period on screen holds it.
+      // An expense or refund's reply carries the budget it counts against.
       const outcome = editing ? "Entry updated" : "Entry saved";
       toast.success(
-        entry.date < current.start || entry.date > current.end
-          ? `${outcome} for ${entry.date}, outside the period you are viewing. Jump to that date to see it.`
-          : `${outcome}.`,
+        `${
+          entry.date < current.start || entry.date > current.end
+            ? `${outcome} for ${entry.date}, outside the period you are viewing. Jump to that date to see it.`
+            : `${outcome}.`
+        }${result.budget ? ` ${budgetLine(result.budget, current.today)}.` : ""}`,
       );
       form.current?.reset();
       setKind("");

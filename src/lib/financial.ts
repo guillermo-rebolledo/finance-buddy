@@ -180,6 +180,15 @@ export function budgetDate(date: string, today: string) {
   const year = date.slice(0, 4);
   return `${atNoon(date).getUTCDate()} ${monthTick.format(atNoon(date))}${year === today.slice(0, 4) ? "" : ` ${year}`}`;
 }
+function budgetDay(period: Period, today: string) {
+  return `${weekdayName.format(atNoon(period.start))} ${budgetDate(period.start, today)}`;
+}
+// A week's days, naming its month once when both ends share it: "14–20 Sep".
+function budgetWeek(period: Period, today: string) {
+  return period.start.slice(0, 7) === period.end.slice(0, 7)
+    ? `${atNoon(period.start).getUTCDate()}–${budgetDate(period.end, today)}`
+    : `${budgetDate(period.start, today)} – ${budgetDate(period.end, today)}`;
+}
 // One descriptor per kind of summary period: how it reads, which days it
 // contains, how a step of exactly one period moves, and how it is labelled.
 // Every other place asks this map instead of testing the kind again.
@@ -198,6 +207,12 @@ export const periodKindDetails: Record<
     tick: (period: Period) => string;
     // How the budget form and Now name the period, such as "Week of 14–20 Sep".
     budgetLabel: (period: Period, today: string) => string;
+    // How a sentence names a period other than the current one, such as "for
+    // the week of 31 Aug – 6 Sep".
+    budgetPhrase: (period: Period, today: string) => string;
+    // How a repeating span names a period by its first day, such as "the week
+    // of 7 Sep".
+    budgetStart: (start: string, today: string) => string;
   }
 > = {
   day: {
@@ -209,8 +224,9 @@ export const periodKindDetails: Record<
     step: (start, direction) => addDays(start, direction),
     name: (period) => dayName.format(atNoon(period.start)),
     tick: (period) => dayTick.format(atNoon(period.start)),
-    budgetLabel: (period, today) =>
-      `${weekdayName.format(atNoon(period.start))} ${budgetDate(period.start, today)}`,
+    budgetLabel: budgetDay,
+    budgetPhrase: (period, today) => `on ${budgetDay(period, today)}`,
+    budgetStart: budgetDate,
   },
   week: {
     label: "Week",
@@ -226,10 +242,10 @@ export const periodKindDetails: Record<
     name: (period) =>
       `${boundaryName.format(atNoon(period.start))} – ${boundaryName.format(atNoon(period.end))}`,
     tick: (period) => weekTick.format(atNoon(period.start)),
-    budgetLabel: (period, today) =>
-      period.start.slice(0, 7) === period.end.slice(0, 7)
-        ? `Week of ${atNoon(period.start).getUTCDate()}–${budgetDate(period.end, today)}`
-        : `Week of ${budgetDate(period.start, today)} – ${budgetDate(period.end, today)}`,
+    budgetLabel: (period, today) => `Week of ${budgetWeek(period, today)}`,
+    budgetPhrase: (period, today) =>
+      `for the week of ${budgetWeek(period, today)}`,
+    budgetStart: (start, today) => `the week of ${budgetDate(start, today)}`,
   },
   month: {
     label: "Month",
@@ -252,6 +268,8 @@ export const periodKindDetails: Record<
     name: (period) => monthName.format(atNoon(period.start)),
     tick: (period) => monthTick.format(atNoon(period.start)),
     budgetLabel: (period) => monthName.format(atNoon(period.start)),
+    budgetPhrase: (period) => `for ${monthName.format(atNoon(period.start))}`,
+    budgetStart: (start) => monthName.format(atNoon(start)),
   },
 };
 export const periodKinds = Object.keys(periodKindDetails) as PeriodKind[];
@@ -527,8 +545,8 @@ export function budgetFigures(
   };
 }
 // The Budgets page: the budgets in effect today for each kind of period, then
-// the repeating spans, upcoming one-off budgets and past periods, which later
-// work fills.
+// the repeating spans, one-off budgets for future periods, and a page of ended
+// periods that had a budget.
 export type BudgetList = {
   today: string;
   currency: "MXN";
@@ -543,11 +561,25 @@ export type BudgetList = {
   past: BudgetView[];
   nextBefore: string | null;
 };
-// An overspent period reads as the excess, never as a negative remaining budget.
-export function budgetStanding(budget: BudgetView) {
+// An overspent period reads as the excess, never as a negative remaining budget,
+// and an ended period reads as how it ended.
+export function budgetStanding(budget: BudgetView, ended = false) {
   return budget.overBudget
     ? `Over by ${money(budget.remaining.slice(1))}`
-    : `${money(budget.remaining)} left`;
+    : ended
+      ? `Under by ${money(budget.remaining)}`
+      : `${money(budget.remaining)} left`;
+}
+// The line an entry's confirmation carries about the budget it counts against,
+// naming the period it landed in: "MXN 1,240.00 left this week", or "Over by
+// MXN 300.00 for the week of 31 Aug – 6 Sep" for an entry in another period.
+export function budgetLine(budget: BudgetView, today: string) {
+  const detail = periodKindDetails[budget.kind];
+  return `${budgetStanding(budget)} ${
+    budget.start <= today && today <= budget.end
+      ? detail.current.toLowerCase()
+      : detail.budgetPhrase(budget, today)
+  }`;
 }
 // Left per day reads as what is still available, never as what should already
 // have been spent.
@@ -560,6 +592,21 @@ export function leftPerDayText(budget: BudgetView) {
         ? "Today is the last day"
         : `${budget.daysLeft} days left, counting today`,
   };
+}
+// A period has ended once its last day is before today in Mexico City. Its
+// budget is then history: it still reports how the period went, but nothing
+// sets, changes or stops it.
+export function periodHasEnded(request: SummaryRequest, today: string) {
+  return summaryPeriod(request.kind, request.date).end < today;
+}
+// How a repeating span reads, from the start of its first period through the
+// start of its last, when it has one: "From the week of 7 Sep".
+export function spanLabel(
+  span: { kind: PeriodKind; start: string; until: string | null },
+  today: string,
+) {
+  const name = periodKindDetails[span.kind].budgetStart;
+  return `From ${name(span.start, today)}${span.until === null ? "" : ` through ${name(span.until, today)}`}`;
 }
 export type BudgetInput = { amount: string; oneOff: boolean };
 export type BudgetError = { field: keyof BudgetInput | null; message: string };
@@ -577,13 +624,39 @@ export function validateBudget(input: unknown): BudgetError | null {
     };
   if (typeof budget.oneOff !== "boolean")
     return { field: "oneOff", message: "Choose whether this budget repeats." };
-  if (budget.oneOff)
+  return null;
+}
+// Removing a budget names how far it reaches: "period" removes the named
+// period's one-off budget, and "onward" stops the repeating budget from it.
+export type BudgetRemoval = { scope: "period" | "onward" };
+export function validateBudgetRemoval(
+  input: unknown,
+): { field: "scope" | null; message: string } | null {
+  if (!input || typeof input !== "object")
+    return { field: null, message: "Choose which budget to remove." };
+  const { scope } = input as Record<string, unknown>;
+  if (scope !== "period" && scope !== "onward")
     return {
-      field: "oneOff",
+      field: "scope",
       message:
-        "One-off budgets are not available yet. Set a repeating budget instead.",
+        "Choose to remove this period's one-off budget or stop the repeating budget from this period.",
     };
   return null;
+}
+// Past budgets arrive a page at a time, newest period end first and day before
+// week before month on the same end. A page's cursor names its last period by
+// that order, "2026-09-06_week", and the next page continues after it.
+export type PastCursor = { end: string; kind: PeriodKind };
+export function pastCursor(view: { end: string; kind: PeriodKind }) {
+  return `${view.end}_${view.kind}`;
+}
+export function parsePastCursor(value: string): PastCursor | null {
+  const [end, kind, ...rest] = value.split("_");
+  return !rest.length &&
+    isCalendarDate(end) &&
+    periodKinds.includes(kind as PeriodKind)
+    ? { end, kind: kind as PeriodKind }
+    : null;
 }
 
 // One descriptor per category change: how the control reads while idle, busy and

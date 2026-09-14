@@ -4,12 +4,15 @@ import {
   privateHeaders,
   requestedPeriod,
 } from "@/lib/access";
+import { entryBudget } from "@/lib/budgets";
 import {
+  entryKindDetails,
   mexicoToday,
   validateEntry,
   validateEntryTarget,
   type EntryError,
   type EntryInput,
+  type EntryKind,
 } from "@/lib/financial";
 import { deleteEntry, editEntry, saveEntry, summarize } from "@/lib/journal";
 export const dynamic = "force-dynamic";
@@ -38,6 +41,7 @@ async function change(
     input: unknown,
     today: string,
   ) => Promise<EntryError | null | undefined>,
+  confirmed: (owner: string, input: unknown) => Promise<object> = async () => ({}),
 ) {
   const access = await authorizeOwner(request, true);
   if ("denied" in access) return access.denied;
@@ -48,10 +52,23 @@ async function change(
       return jsonError("invalid_field", refused.message, {
         field: refused.field,
       });
-    return Response.json({ saved: true }, { headers: privateHeaders });
+    return Response.json(
+      { saved: true, ...(await confirmed(access.owner, input)) },
+      { headers: privateHeaders },
+    );
   } catch {
     return jsonError("not_confirmed", unconfirmed);
   }
+}
+// An expense or refund counts against a budget, so its reply adds the budget
+// of the shortest period containing the saved movement date, read after the
+// write commits. The entry is saved either way, so a budget that cannot be
+// read is left out rather than turning the save into an unconfirmed one.
+async function budgetReply(owner: string, input: unknown) {
+  const { kind, date } = input as EntryInput;
+  if (entryKindDetails[kind as EntryKind].total !== "expenses") return {};
+  const budget = await entryBudget(owner, date).catch(() => null);
+  return budget ? { budget } : {};
 }
 export function POST(request: Request) {
   return change(
@@ -60,6 +77,7 @@ export function POST(request: Request) {
     async (owner, input, today) =>
       validateEntry(input, today) ??
       (await saveEntry(owner, input as EntryInput)),
+    budgetReply,
   );
 }
 export function PATCH(request: Request) {
@@ -69,6 +87,7 @@ export function PATCH(request: Request) {
     async (owner, input, today) =>
       validateEntry(input, today) ??
       (await editEntry(owner, input as EntryInput)),
+    budgetReply,
   );
 }
 export function DELETE(request: Request) {
