@@ -166,7 +166,7 @@ export function PeriodNavigation({
               }
             >
               <ChevronLeft aria-hidden="true" />
-              <span className="sr-only">Previous</span>
+              <span className="sr-only">Previous period</span>
             </Button>
             <Input
               id="anchor"
@@ -186,7 +186,7 @@ export function PeriodNavigation({
               }
             >
               <ChevronRight aria-hidden="true" />
-              <span className="sr-only">Next</span>
+              <span className="sr-only">Next period</span>
             </Button>
           </ButtonGroup>
         </Field>
@@ -203,7 +203,7 @@ export function PeriodNavigation({
             onClick={() => onShow({ kind: view.kind, date: null })}
           >
             <RotateCcw aria-hidden="true" />
-            Back to current period
+            Go to current period
           </Button>
         </div>
       </div>
@@ -226,13 +226,13 @@ export function PeriodUnavailable({
 }) {
   return (
     <Alert variant="destructive">
-      <AlertTitle>Period unavailable</AlertTitle>
+      <AlertTitle>We couldn&apos;t load that period</AlertTitle>
       <AlertDescription>
-        We could not load {requestedLabel}.{" "}
+        {requestedLabel} didn&apos;t load.{" "}
         {summary &&
-          `The figures below still describe ${periodLabel(summary.kind, summary)}.`}
+          `You're still looking at ${periodLabel(summary.kind, summary)} below.`}
         <Button variant="outline" disabled={loading} onClick={onRetry}>
-          {loading ? "Loading…" : "Retry period"}
+          {loading ? "Loading…" : "Try again"}
         </Button>
       </AlertDescription>
     </Alert>

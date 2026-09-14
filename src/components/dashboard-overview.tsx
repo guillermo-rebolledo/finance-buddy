@@ -81,7 +81,7 @@ export function DashboardOverview({
                   </CardTitle>
                   {label === "Net change" && (
                     <CardDescription>
-                      Recorded activity for this period
+                      Income minus expenses
                     </CardDescription>
                   )}
                 </CardHeader>
@@ -95,7 +95,7 @@ export function DashboardOverview({
                 <h2>Spending by category</h2>
               </CardTitle>
               <CardDescription>
-                Expenses minus refunds recorded in this period.
+                What you spent, after refunds.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -113,7 +113,7 @@ export function DashboardOverview({
                 </ul>
               ) : (
                 <p className="text-muted-foreground">
-                  No expenses or refunds in this period.
+                  No spending or refunds here yet.
                 </p>
               )}
             </CardContent>

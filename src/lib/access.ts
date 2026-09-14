@@ -43,7 +43,7 @@ export function unsupportedBuild(request: Request) {
   const named = appBuild(build.trim());
   return named && buildAtLeast(named, minimum)
     ? null
-    : jsonError("upgrade_required", "Update the app to keep using your journal.");
+    : jsonError("upgrade_required", "Update Finance Buddy to keep using your journal.");
 }
 // Every private endpoint proves a live owner session, and a write proves where
 // it came from before anything is read from its body. A present Origin must be
@@ -56,7 +56,7 @@ export async function authorizeOwner(request: Request, write: boolean) {
   if (outdated) return { denied: outdated };
   const access = await getAccess(request.headers);
   if (access.status !== "authorized")
-    return { denied: jsonError(access.status, "Workspace access required.") };
+    return { denied: jsonError(access.status, "Sign in to open your journal.") };
   const origin = request.headers.get("origin");
   if (
     (origin !== null && origin !== getConfig()?.origin) ||
@@ -64,7 +64,7 @@ export async function authorizeOwner(request: Request, write: boolean) {
       ((origin === null && access.proof === "cookie") ||
         !request.headers.get("content-type")?.startsWith("application/json")))
   )
-    return { denied: jsonError("request_not_allowed", "Request not allowed.") };
+    return { denied: jsonError("request_not_allowed", "Finance Buddy blocked this request.") };
   return { owner: access.userId };
 }
 // The report and its export resolve the requested period the same way, and

@@ -71,7 +71,7 @@ export function SheetsExport({
         setFailure({
           message:
             result.error ||
-            "The export could not be completed. Retry this same export.",
+            "We couldn't finish the export. Try the same export again.",
           reconnect: Boolean(result.reconnect),
           again,
         });
@@ -87,7 +87,7 @@ export function SheetsExport({
       // not be confirmed, rather than creating a second one.
       setFailure({
         message:
-          "The export could not be confirmed. Retry this same export; it will not create a second spreadsheet.",
+          "We didn't get confirmation that the spreadsheet was created. Retry this export; we won't create a duplicate.",
         reconnect: false,
         again: false,
       });
@@ -109,13 +109,13 @@ export function SheetsExport({
       </Button>
       {notice === "connected" && (
         <p role="status" className="text-sm text-muted-foreground">
-          Google Sheets export is connected. Export the period you are viewing.
+          Google Sheets is connected. You can export the period on screen.
         </p>
       )}
       {notice === "denied" && (
         <p role="status" className="text-sm text-muted-foreground">
-          Google Sheets export was not authorized. Your sign-in and journal are
-          unaffected, and you can authorize it the next time you export.
+          Google Sheets wasn&apos;t connected. You&apos;re still signed in, and your
+          journal hasn&apos;t changed. You can connect it the next time you export.
         </p>
       )}
       {done && (
@@ -128,7 +128,7 @@ export function SheetsExport({
       )}
       {failure && (
         <Alert variant="destructive">
-          <AlertTitle>Export needs attention</AlertTitle>
+          <AlertTitle>We couldn&apos;t finish the export</AlertTitle>
           <AlertDescription>
             <div className="flex flex-col items-start gap-3">
               {failure.message}

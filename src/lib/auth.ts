@@ -43,7 +43,7 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
         ) {
           return {
             error: "access_denied",
-            errorDescription: "This account cannot access this workspace.",
+            errorDescription: "This account can't open this journal.",
           };
         }
       },

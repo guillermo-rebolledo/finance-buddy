@@ -7,7 +7,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { SheetsExport } from "@/components/sheets-export";
 
 const exportFailed =
-  "The PDF could not be created, and your journal is unchanged. Retry the export.";
+  "We couldn't create the PDF. Your journal hasn't changed, so you can try the export again.";
 
 // Both snapshots cover the period whose figures are on screen, named by the
 // summary the server resolved, so an export never quietly switches period.
@@ -93,7 +93,7 @@ export function ReportExport({
       )}
       {error && (
         <Alert variant="destructive">
-          <AlertTitle>Export needs attention</AlertTitle>
+          <AlertTitle>We couldn&apos;t finish the export</AlertTitle>
           <AlertDescription>
             {error}
             <Button variant="outline" disabled={exporting} onClick={exportReport}>

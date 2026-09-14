@@ -59,7 +59,7 @@ export async function reportDocument(summary: Summary) {
   const label = periodLabel(summary.kind, summary);
   // The date this snapshot was taken, which is not the period it covers.
   const exported = summary.today;
-  document.setTitle(`Finance Buddy — ${label}`);
+  document.setTitle(`Finance Buddy: ${label}`);
   let sheet!: PDFPage;
   let y = 0;
   function addPage() {
@@ -166,7 +166,7 @@ export async function reportDocument(summary: Summary) {
   }
 
   addPage();
-  draw("Finance Buddy — financial report", { size: 18, font: bold });
+  draw("Finance Buddy financial report", { size: 18, font: bold });
   y -= 6;
   // The period covered and the date the snapshot was taken are separate lines,
   // each named, so neither can be mistaken for the other.
@@ -185,7 +185,7 @@ export async function reportDocument(summary: Summary) {
   if (summary.breakdown.length)
     for (const group of summary.breakdown)
       amountRow(group.category, money(group.amount));
-  else draw("No expenses or refunds in this period.");
+  else draw("No spending or refunds in this period.");
 
   heading(`Financial movements (${summary.entries.length})`);
   if (summary.entries.length) {
@@ -218,7 +218,7 @@ export async function reportDocument(summary: Summary) {
       );
       y -= gap;
     }
-  } else draw("No financial movements in this period.");
+  } else draw("No entries for this period.");
 
   const pages = document.getPages();
   pages.forEach((each, index) =>

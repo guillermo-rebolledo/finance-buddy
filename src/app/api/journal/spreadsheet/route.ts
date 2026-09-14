@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     if (typeof input?.id !== "string" || !uuidPattern.test(input.id))
       return jsonError(
         "invalid_field",
-        "Invalid export identifier. Reload and try again.",
+        "We couldn't recognize that export. Reload the page and try again.",
         { field: "id" },
       );
     const result = await exportSnapshot(
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   } catch {
     return jsonError(
       "not_confirmed",
-      "The export could not be completed. Your journal is unchanged. Retry this same export.",
+      "We couldn't finish the export. Your journal hasn't changed, so you can try the same export again.",
     );
   }
 }

@@ -55,11 +55,11 @@ function snapshot(summary: Summary) {
     properties: { title: snapshotTitle(summary.kind, summary, summary.today) },
     sheets: [
       sheet("Summary", [
-        { values: [heading("Finance Buddy snapshot")] },
+        { values: [heading("Finance Buddy summary")] },
         { values: [text("Period"), text(periodLabel(summary.kind, summary))] },
-        { values: [text("Covered from"), text(summary.start)] },
-        { values: [text("Covered to"), text(summary.end)] },
-        { values: [text("Generated (Mexico City)"), text(summary.today)] },
+        { values: [text("Start date"), text(summary.start)] },
+        { values: [text("End date"), text(summary.end)] },
+        { values: [text("Exported (Mexico City)"), text(summary.today)] },
         { values: [text("Currency"), text(summary.currency)] },
         { values: [heading("Total income"), amount(summary.income)] },
         { values: [heading("Total expenses"), amount(summary.expenses)] },
@@ -78,7 +78,7 @@ function snapshot(summary: Summary) {
         })),
         ...(summary.breakdown.length
           ? []
-          : [{ values: [text("No expenses or refunds in this period.")] }]),
+          : [{ values: [text("No spending or refunds in this period.")] }]),
       ]),
       sheet("Entries", [
         {
@@ -103,7 +103,7 @@ function snapshot(summary: Summary) {
         })),
         ...(summary.entries.length
           ? []
-          : [{ values: [text("No entries in this period.")] }]),
+          : [{ values: [text("No entries for this period.")] }]),
       ]),
     ],
   };
@@ -120,17 +120,17 @@ export type ExportRefusal = {
 export const reconnectRefusal: ExportRefusal = {
   code: "reconnect_required",
   message:
-    "Google Sheets export is not connected, or the permission expired or was revoked. Connect Google Sheets export and try again. Your journal is unaffected.",
+    "Google Sheets isn't connected, or its permission has expired. Connect it and try again. Your journal hasn't changed.",
 };
 const unconfirmedRefusal: ExportRefusal = {
   code: "export_unconfirmed",
   message:
-    "An earlier attempt with this export was not confirmed, so nothing was created again. Check your Google Drive, then export again to create a new spreadsheet.",
+    "We never got confirmation for the last export, so we didn't create another spreadsheet. Check Google Drive first. If it isn't there, start a new export.",
 };
 const retryRefusal: ExportRefusal = {
   code: "not_confirmed",
   message:
-    "Google could not complete the export. Nothing was created and your journal is unchanged. Retry this same export.",
+    "Google couldn't finish the export. No spreadsheet was created, and your journal hasn't changed. Try the same export again.",
 };
 
 // An export whose outcome the app cannot prove: the row keeps saying so, and
@@ -182,7 +182,7 @@ export async function exportSnapshot(
         refused: {
           code: "export_period_mismatch",
           message:
-            "This export already covers a different period. Reload and export the period you are viewing.",
+            "This export belongs to a different period. Reload the page, then export the period on screen.",
         },
       };
     // The same export, already finished: its own spreadsheet, not a new one.

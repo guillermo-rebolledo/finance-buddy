@@ -42,20 +42,20 @@ export function SpendingTrends({ trend }: { trend: Trend }) {
     <section aria-label="Trends" className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <h2 className="font-serif text-2xl tracking-tight">
-          The last {span}
+          Past {span}
         </h2>
         <p className="text-muted-foreground">
-          {trend.start} – {trend.end}, ending with the period above. Each period
-          uses the same Mexico City calendar boundaries as your summary.
+          {trend.start} – {trend.end}. This range ends with the period above,
+          using Mexico City dates throughout.
         </p>
       </div>
       {!recorded ? (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>Nothing recorded in these {span}</EmptyTitle>
+            <EmptyTitle>No activity in the past {span}</EmptyTitle>
             <EmptyDescription>
-              Record income, expenses, or refunds, or jump to a date with
-              history behind it to see how spending moved.
+              Add a few entries, or jump to an earlier date, to see how your
+              money has moved over time.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -67,11 +67,11 @@ export function SpendingTrends({ trend }: { trend: Trend }) {
                 <h3>Income and expenses</h3>
               </CardTitle>
               <CardDescription>
-                Each period&apos;s recorded income beside its expenses after
-                refunds. Across these {span}: income {money(trend.income)},
-                expenses {money(trend.expenses)}, against{" "}
-                {money(trend.previousIncome)} and{" "}
-                {money(trend.previousExpenses)} in the {span} before.
+                Compare each period&apos;s income with spending after refunds. In
+                these {span}, you recorded {money(trend.income)} in income and{" "}
+                {money(trend.expenses)} in expenses. The previous {span} came
+                to {money(trend.previousIncome)} and{" "}
+                {money(trend.previousExpenses)}.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -93,9 +93,9 @@ export function SpendingTrends({ trend }: { trend: Trend }) {
                 <h3>Net change</h3>
               </CardTitle>
               <CardDescription>
-                Recorded income minus expenses, period by period. Across these{" "}
-                {span}: {signedMoney(trend.netChange)}. This describes recorded
-                activity, not an account balance.
+                Income minus expenses, period by period. The total change for
+                these {span} is {signedMoney(trend.netChange)}. It&apos;s your
+                recorded activity, not an account balance.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -116,8 +116,8 @@ export function SpendingTrends({ trend }: { trend: Trend }) {
                 <h3>Where the spending went</h3>
               </CardTitle>
               <CardDescription>
-                Expenses minus refunds by category across the whole span, beside
-                the same category in the {span} before it.
+                See what you spent in each category, after refunds, compared
+                with the previous {span}.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -139,7 +139,7 @@ export function SpendingTrends({ trend }: { trend: Trend }) {
                 </>
               ) : (
                 <p className="text-muted-foreground">
-                  No expenses or refunds in these {span}.
+                  No spending or refunds in these {span}.
                 </p>
               )}
             </CardContent>

@@ -101,8 +101,8 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
   // duplicated by a replacement, a correction only writes the same values again.
   const unconfirmed = () =>
     editing
-      ? "The correction could not be confirmed. Retry this same entry safely; it writes the same values again."
-      : "Save could not be confirmed. Retry this same entry safely; do not create a replacement.";
+      ? "We didn't get confirmation that your changes were saved. It's safe to retry with the same values."
+      : "We didn't get confirmation that this entry was saved. Retry the same entry to avoid a duplicate.";
   const form = useRef<HTMLFormElement>(null);
   // Every refusal is announced once, as a notification; the form keeps its
   // values and marks the field at fault, if any.
@@ -140,7 +140,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       if (!response.ok) {
         refuse(
           result.error ||
-            "The deletion could not be confirmed. Retry it safely.",
+            "We couldn't confirm that this entry was deleted. Try deleting it again.",
         );
         return;
       }
@@ -153,7 +153,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
       await show(view);
       focusEntries();
     } catch {
-      refuse("The deletion could not be confirmed. Retry it safely.");
+      refuse("We couldn't confirm that this entry was deleted. Try deleting it again.");
     } finally {
       setDeletingId("");
     }
@@ -179,7 +179,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     if (!current) {
       setInvalidField(null);
       refuse(
-        "Could not check the current date. Your input is preserved; retry when the overview is available.",
+        "We couldn't check today's date. Your entry is still here. Try again once the page loads.",
       );
       inFlight.current = false;
       setSaving(false);
@@ -317,8 +317,8 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
             </CardTitle>
             <CardDescription>
               {editing
-                ? "Correct any field of this entry. The same rules apply as when it was recorded, and every period it affects is updated."
-                : "Record income, a purchase including card purchases, or a refund on the date the money moved."}
+                ? "Fix any detail below. We'll update every day, week, and month that includes this entry."
+                : "Add income, spending, or a refund on the date the money moved."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -350,8 +350,8 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                     </Select>
                     {kind === "refund" && (
                       <FieldDescription>
-                        Enter the refunded amount as a positive number. It
-                        reduces expenses on its receipt date.
+                        Enter a positive amount. We&apos;ll subtract it from
+                        expenses on the date you received the refund.
                       </FieldDescription>
                     )}
                   </Field>
@@ -420,16 +420,15 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                     </Select>
                     {archived && retained && (
                       <FieldDescription>
-                        {retained.category} is archived. This entry keeps it
-                        while you change another field. Replacing it offers your
-                        active categories, or no category at all.
+                        {retained.category} is archived, but this entry can keep
+                        it. If you switch categories, you can choose an active
+                        one or leave it uncategorized.
                       </FieldDescription>
                     )}
                     {kind === "refund" && (
                       <FieldDescription>
-                        Refunds use your active expense categories. An archived
-                        category stays archived; leave the refund uncategorized
-                        instead.
+                        Refunds use expense categories. Pick an active one, or
+                        leave this refund uncategorized.
                       </FieldDescription>
                     )}
                   </Field>
@@ -481,7 +480,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                 Entries
               </h2>
             </CardTitle>
-            <CardDescription>Latest movement date first.</CardDescription>
+            <CardDescription>Newest movement date first.</CardDescription>
           </CardHeader>
           <CardContent>
             {summary.entries.length ? (
@@ -557,10 +556,10 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
             ) : (
               <Empty>
                 <EmptyHeader>
-                  <EmptyTitle>No entries in this period</EmptyTitle>
+                  <EmptyTitle>Nothing here yet</EmptyTitle>
                   <EmptyDescription>
-                    Add income, an expense, or a refund, or browse another day,
-                    week, or month.
+                    Add income, an expense, or a refund. You can also browse a
+                    different day, week, or month.
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -580,14 +579,14 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         {removing && (
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete this entry permanently?</AlertDialogTitle>
+              <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
               <AlertDialogDescription>
                 {entryTitle(removing)}
                 {removing.categoryId
                   ? `, in ${removing.category}.`
                   : ", uncategorized."}{" "}
-                It leaves your journal and every day, week, and month total that
-                includes it. This cannot be undone.
+                This removes it from your journal and recalculates every total
+                that includes it. You can&apos;t undo this.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

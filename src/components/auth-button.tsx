@@ -84,8 +84,8 @@ export function AuthButton({
           <Alert variant="destructive">
             <AlertDescription>
               {action === "signin"
-                ? "Sign-in could not be completed. Please try again."
-                : "Sign-out failed. Please try again."}
+                ? "We couldn't sign you in. Try again."
+                : "We couldn't sign you out. Try again."}
             </AlertDescription>
           </Alert>
         </div>

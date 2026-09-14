@@ -66,7 +66,7 @@ export function AppSidebar() {
                 <span className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold">Finance Buddy</span>
                   <span className="text-xs text-muted-foreground">
-                    Personal journal
+                    Your money journal
                   </span>
                 </span>
               </Link>

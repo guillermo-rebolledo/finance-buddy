@@ -9,10 +9,10 @@ export const categoryKindDetails: Record<
   CategoryKind,
   { label: string; note: string }
 > = {
-  income: { label: "Income", note: "Where the money you receive comes from." },
+  income: { label: "Income", note: "Where your money comes from." },
   expense: {
     label: "Expense",
-    note: "What you spend on. Refunds use these categories too.",
+    note: "Where your money goes. Refunds use these categories too.",
   },
 };
 export const categoryKinds = Object.keys(categoryKindDetails) as CategoryKind[];
@@ -472,7 +472,7 @@ export function validateEntry(
 }
 
 export const entryMissing =
-  "That entry is not in your journal. Refresh to see the current period.";
+  "We couldn't find that entry. Refresh to see the latest version of this period.";
 // Editing and deletion name an existing entry; only its identifier is read from
 // the request, and ownership always comes from the session.
 export function validateEntryTarget(input: unknown): EntryError | null {
@@ -480,7 +480,7 @@ export function validateEntryTarget(input: unknown): EntryError | null {
   if (typeof id !== "string" || !uuidPattern.test(id))
     return {
       field: "id",
-      message: "Invalid entry identifier. Reload and try again.",
+      message: "We couldn't recognize that entry. Reload the page and try again.",
     };
   return null;
 }
@@ -493,7 +493,7 @@ export function categoryRefusal(kind: string): EntryError {
     message:
       kind === "refund"
         ? "Choose an active expense category for this refund, or leave it uncategorized."
-        : "Choose an active category for this entry type.",
+        : "Choose an active category that matches this entry type.",
   };
 }
 
@@ -697,7 +697,7 @@ export const categoryActionDetails: Record<
   archive: {
     label: "Archive",
     pending: "Archiving…",
-    done: "Category archived. Existing entries and totals keep it.",
+    done: "Category archived. It's still on your older entries and totals.",
     named: false,
     targeted: true,
   },
@@ -730,11 +730,11 @@ export function categoryName(name: string) {
 }
 export const categoryNameRule = `Enter a name of 1 to ${categoryNameLimit} characters.`;
 export const categoryNameTaken =
-  "You already have a category with that name in this list. Rename or restore that one instead.";
+  "That name is already in this list. Rename the existing category or restore it from the archive.";
 export const categoryMissing =
-  "That category is not in your lists. Reload and try again.";
+  "We couldn't find that category. Reload the page and try again.";
 export const categoryIdentifierTaken =
-  "That category identifier already belongs to a different category. Reload and try again.";
+  "That category conflicts with one already in your journal. Reload the page and try again.";
 export function validateCategoryChange(input: unknown): CategoryError | null {
   if (!input || typeof input !== "object")
     return { field: null, message: "Choose a change to make." };
@@ -758,7 +758,7 @@ export function validateCategoryChange(input: unknown): CategoryError | null {
   )
     return {
       field: "id",
-      message: "Invalid category identifier. Reload and try again.",
+      message: "We couldn't recognize that category. Reload the page and try again.",
     };
   if (!detail.targeted && !categoryKindDetail(change.kind as string))
     return { field: "kind", message: "Choose the income or expense list." };

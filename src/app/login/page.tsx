@@ -29,45 +29,46 @@ export default async function Login({
           FINANCE BUDDY
         </div>
         <h1 className="max-w-lg font-serif text-5xl leading-tight tracking-tight md:text-6xl">
-          A little clarity.
+          See where your money goes.
           <br />
-          Every day.
+          One entry at a time.
         </h1>
         <p className="max-w-sm text-lg leading-relaxed text-muted-foreground">
-          A quiet place for your personal finances. Your journal, just for you.
+          Keep your income, spending, and refunds together in one private
+          journal.
         </p>
       </section>
       <div className="w-full md:max-w-sm">
         <Card>
           <CardHeader>
             <Badge variant="secondary">
-              <LockKeyhole aria-hidden="true" /> Private workspace
+              <LockKeyhole aria-hidden="true" /> Private journal
             </Badge>
             <CardTitle>
-              <h2>Welcome to Finance Buddy</h2>
+              <h2>Open your journal</h2>
             </CardTitle>
             <CardDescription>
               {config?.apple
-                ? "Sign in with your Google or Apple account."
-                : "Sign in with your Google account."}
+                ? "Use Google or Apple to pick up where you left off."
+                : "Use Google to pick up where you left off."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-5">
               {!configured ? (
                 <Alert>
-                  <AlertTitle>Setup is not complete</AlertTitle>
+                  <AlertTitle>Sign-in isn&apos;t ready yet</AlertTitle>
                   <AlertDescription>
-                    Sign-in is not available yet. Please try again once setup is
-                    complete.
+                    Finance Buddy still needs a little setup. Try again once
+                    it&apos;s ready.
                   </AlertDescription>
                 </Alert>
               ) : (
                 failed && (
                   <Alert variant="destructive">
-                    <AlertTitle>Sign-in was not completed</AlertTitle>
+                    <AlertTitle>That sign-in didn&apos;t work</AlertTitle>
                     <AlertDescription>
-                      Use an account with a verified email and try again.
+                      Try again with an account that has a verified email.
                     </AlertDescription>
                   </Alert>
                 )
@@ -78,7 +79,7 @@ export default async function Login({
           </CardContent>
           <CardFooter>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Your journal is private to your account.
+              Only you can see the journal tied to this account.
             </p>
           </CardFooter>
         </Card>

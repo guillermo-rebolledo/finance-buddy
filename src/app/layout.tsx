@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 export const metadata: Metadata = {
   title: "Finance Buddy",
-  description: "Your private personal finance journal.",
+  description: "A private place to keep track of your money.",
   robots: { index: false, follow: false },
 };
 export default function RootLayout({

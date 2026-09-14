@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   } catch {
     return jsonError(
       "unavailable",
-      "Could not create the PDF. Please retry the export.",
+      "We couldn't create the PDF. Try the export again.",
     );
   }
 }
