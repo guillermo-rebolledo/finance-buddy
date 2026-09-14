@@ -16,11 +16,10 @@ export const dynamic = "force-dynamic";
 // Every refusal reads the same way, and says whether Google has to be
 // authorized again before the owner tries once more.
 function refuse(refused: ExportRefusal) {
-  return Response.json(
-    refused.reconnect
-      ? { error: refused.message, reconnect: true }
-      : { error: refused.message },
-    { status: refused.status, headers: privateHeaders },
+  return jsonError(
+    refused.code,
+    refused.message,
+    refused.code === "reconnect_required" ? { reconnect: true } : {},
   );
 }
 
@@ -41,7 +40,11 @@ export async function POST(request: Request) {
       id?: unknown;
     } | null;
     if (typeof input?.id !== "string" || !uuidPattern.test(input.id))
-      return jsonError("Invalid export identifier. Reload and try again.", 400);
+      return jsonError(
+        "invalid_field",
+        "Invalid export identifier. Reload and try again.",
+        { field: "id" },
+      );
     const result = await exportSnapshot(
       access.owner,
       input.id,
@@ -52,8 +55,8 @@ export async function POST(request: Request) {
     return Response.json(result, { headers: privateHeaders });
   } catch {
     return jsonError(
+      "not_confirmed",
       "The export could not be completed. Your journal is unchanged. Retry this same export.",
-      503,
     );
   }
 }

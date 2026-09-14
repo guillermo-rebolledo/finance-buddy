@@ -27,6 +27,9 @@ export async function GET(request: Request) {
       },
     });
   } catch {
-    return jsonError("Could not create the PDF. Please retry the export.", 503);
+    return jsonError(
+      "unavailable",
+      "Could not create the PDF. Please retry the export.",
+    );
   }
 }

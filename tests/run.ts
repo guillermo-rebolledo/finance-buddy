@@ -55,6 +55,8 @@ async function main() {
       BETTER_AUTH_SECRET: randomUUID() + randomUUID(),
       GOOGLE_CLIENT_ID: "test-client",
       GOOGLE_CLIENT_SECRET: "test-secret",
+      GOOGLE_IOS_CLIENT_ID: "test-ios-client",
+      MINIMUM_IOS_BUILD: "12",
       PRIVATE_OWNER_EMAIL: "owner@example.test",
     };
     const migrate = spawnSync("pnpm", ["db:migrate"], {

@@ -474,7 +474,7 @@ export function categoryActionDetail(action: string) {
   return categoryActionDetails[action as CategoryAction];
 }
 export type CategoryChange =
-  | { action: "create"; kind: CategoryKind; name: string }
+  | { action: "create"; kind: CategoryKind; name: string; id?: string }
   | { action: "rename"; id: string; name: string }
   | { action: "archive" | "restore"; id: string };
 export type CategoryError = {
@@ -494,6 +494,8 @@ export const categoryNameTaken =
   "You already have a category with that name in this list. Rename or restore that one instead.";
 export const categoryMissing =
   "That category is not in your lists. Reload and try again.";
+export const categoryIdentifierTaken =
+  "That category identifier already belongs to a different category. Reload and try again.";
 export function validateCategoryChange(input: unknown): CategoryError | null {
   if (!input || typeof input !== "object")
     return { field: null, message: "Choose a change to make." };
@@ -508,6 +510,17 @@ export function validateCategoryChange(input: unknown): CategoryError | null {
     (typeof change.id !== "string" || !uuidPattern.test(change.id))
   )
     return { field: "id", message: categoryMissing };
+  // A creation may name its own identifier, so a retry after a lost reply
+  // finds the category it already created rather than a taken name.
+  if (
+    !detail.targeted &&
+    change.id !== undefined &&
+    (typeof change.id !== "string" || !uuidPattern.test(change.id))
+  )
+    return {
+      field: "id",
+      message: "Invalid category identifier. Reload and try again.",
+    };
   if (!detail.targeted && !categoryKindDetail(change.kind as string))
     return { field: "kind", message: "Choose the income or expense list." };
   if (detail.named) {

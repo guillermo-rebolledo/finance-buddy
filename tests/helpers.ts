@@ -1,14 +1,27 @@
 import { inflateSync } from "node:zlib";
-import { readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { expect } from "@playwright/test";
-export async function signIn(
-  page: import("@playwright/test").Page,
-  identity = "owner",
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
+// A refusal is read the way a client reads it: its status and its stable code,
+// never the wording of its message.
+export async function expectRefusal(
+  response: import("@playwright/test").APIResponse | Response,
+  code: string,
+  status: number,
 ) {
+  expect(
+    typeof response.status === "function" ? response.status() : response.status,
+  ).toBe(status);
+  expect((await response.json()).code).toBe(code);
+}
+// Restore an advancing real-time clock before signing in; tests may rewind
+// reporting time afterward, and sign-in rate limits need time to pass.
+async function advanceSignInClock() {
   const previous = Number(
     await readFile(process.env.TEST_CLOCK_FILE!, "utf8").catch(() => "0"),
   );
-  // Restore an advancing real-time clock before OAuth; tests may rewind reporting time afterward.
   const lastSignin = Number(
     await readFile(process.env.TEST_CLOCK_FILE! + ".signin", "utf8").catch(
       () => "0",
@@ -20,6 +33,12 @@ export async function signIn(
     String(signinClock),
   );
   await writeFile(process.env.TEST_CLOCK_FILE!, String(signinClock));
+}
+export async function signIn(
+  page: import("@playwright/test").Page,
+  identity = "owner",
+) {
+  await advanceSignInClock();
   await page.route(
     "https://accounts.google.com/o/oauth2/v2/auth**",
     async (route) => {
@@ -259,4 +278,164 @@ export async function goToSection(
   const link = page.getByRole("link", { name, exact: true });
   await openNavigation(page, link);
   await link.click();
+}
+
+export const appOrigin = "http://127.0.0.1:3100";
+type NativeRequest = {
+  method?: string;
+  body?: unknown;
+  headers?: Record<string, string>;
+};
+// A native client sends exactly what the iOS app sends: no cookies, no Origin,
+// no browser fetch metadata, and its bearer token once it has one. Node's own
+// fetch adds fetch metadata, so requests go out through plain HTTP instead.
+export function nativeClient(bearer?: string | null, base = appOrigin) {
+  return (path: string, { method = "GET", body, headers = {} }: NativeRequest = {}) =>
+    new Promise<Response>((resolve, reject) => {
+      const payload =
+        body === undefined
+          ? undefined
+          : typeof body === "string"
+            ? body
+            : JSON.stringify(body);
+      const outgoing = httpRequest(
+        new URL(path, base),
+        {
+          method,
+          headers: {
+            ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+            ...(payload === undefined
+              ? {}
+              : {
+                  "Content-Type": "application/json",
+                  "Content-Length": String(Buffer.byteLength(payload)),
+                }),
+            ...headers,
+          },
+        },
+        (incoming) => {
+          const chunks: Buffer[] = [];
+          incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+          incoming.on("end", () => {
+            const replyHeaders = new Headers();
+            for (let i = 0; i < incoming.rawHeaders.length; i += 2)
+              replyHeaders.append(incoming.rawHeaders[i], incoming.rawHeaders[i + 1]);
+            const status = incoming.statusCode!;
+            resolve(
+              new Response(
+                [204, 304].includes(status)
+                  ? null
+                  : new Uint8Array(Buffer.concat(chunks)),
+                { status, headers: replyHeaders },
+              ),
+            );
+          });
+        },
+      );
+      outgoing.on("error", reject);
+      outgoing.end(payload);
+    });
+}
+// The identities Google vouches for, exactly as the provider fixture names them.
+const googleIdentities = {
+  owner: { sub: "google-owner", email: "owner@example.test", email_verified: true },
+  stranger: {
+    sub: "google-stranger",
+    email: "stranger@example.test",
+    email_verified: true,
+  },
+  unverified: {
+    sub: "google-owner",
+    email: "owner@example.test",
+    email_verified: false,
+  },
+  changed: {
+    sub: "google-owner",
+    email: "stranger@example.test",
+    email_verified: true,
+  },
+};
+// Each test worker signs native ID tokens with its own key, published through
+// the provider fixture the way Google publishes its signing keys.
+let signingKey: Promise<{ privateKey: CryptoKey; kid: string }> | undefined;
+function nativeSigningKey() {
+  return (signingKey ??= (async () => {
+    const { privateKey, publicKey } = await generateKeyPair("RS256");
+    const kid = `native-${randomUUID()}`;
+    await appendFile(
+      process.env.TEST_CLOCK_FILE! + ".jwks",
+      JSON.stringify({ ...(await exportJWK(publicKey)), kid, alg: "RS256", use: "sig" }) +
+        "\n",
+    );
+    return { privateKey, kid };
+  })());
+}
+// ID tokens are dated by the server's clock, which tests move.
+async function serverNow() {
+  const offset = Number(
+    await readFile(process.env.TEST_CLOCK_FILE!, "utf8").catch(() => "0"),
+  );
+  return Date.now() + (offset || 0);
+}
+export async function googleIdToken({
+  identity = "owner",
+  audience = "test-ios-client",
+  nonce,
+  age = 0,
+}: {
+  identity?: keyof typeof googleIdentities;
+  audience?: string;
+  nonce?: string;
+  age?: number;
+} = {}) {
+  const { privateKey, kid } = await nativeSigningKey();
+  const issued = Math.floor((await serverNow()) / 1000) - age;
+  return new SignJWT({
+    ...googleIdentities[identity],
+    name: "Test Owner",
+    ...(nonce === undefined ? {} : { nonce }),
+  })
+    .setProtectedHeader({ alg: "RS256", kid })
+    .setIssuer("https://accounts.google.com")
+    .setAudience(audience)
+    .setIssuedAt(issued)
+    .setExpirationTime(issued + 60 * 60)
+    .sign(privateKey);
+}
+// Signs in the way the iOS app does: a Google ID token and the nonce it was
+// issued for, posted with no cookies and no Origin. The reply's set-auth-token
+// header is the bearer token the app keeps.
+export async function nativeSignIn({
+  identity,
+  audience,
+  age,
+  sendNonce = true,
+  tokenNonce,
+  alter = (token: string) => token,
+  headers,
+  base = appOrigin,
+}: {
+  identity?: keyof typeof googleIdentities;
+  audience?: string;
+  age?: number;
+  sendNonce?: boolean;
+  tokenNonce?: string;
+  alter?: (token: string) => string;
+  headers?: Record<string, string>;
+  base?: string;
+} = {}) {
+  await advanceSignInClock();
+  const nonce = randomUUID();
+  const token = alter(
+    await googleIdToken({ identity, audience, age, nonce: tokenNonce ?? nonce }),
+  );
+  const response = await nativeClient(null, base)("/api/auth/sign-in/social", {
+    method: "POST",
+    body: {
+      provider: "google",
+      idToken: sendNonce ? { token, nonce } : { token },
+    },
+    headers,
+  });
+  return { response, bearer: response.headers.get("set-auth-token") };
 }

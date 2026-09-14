@@ -4,6 +4,7 @@ import { getAccess } from "@/lib/auth";
 import { AppShell } from "@/components/app-shell";
 import { WorkspaceUnavailable } from "@/components/workspace-unavailable";
 import { AppearanceSettings } from "@/components/appearance-settings";
+import { SessionSettings } from "@/components/session-settings";
 export const dynamic = "force-dynamic";
 export default async function Settings() {
   const access = await getAccess(await headers());
@@ -11,7 +12,9 @@ export default async function Settings() {
   if (access.status !== "authorized") redirect("/login");
   return (
     <AppShell>
-      <AppearanceSettings />
+      <AppearanceSettings>
+        <SessionSettings />
+      </AppearanceSettings>
     </AppShell>
   );
 }

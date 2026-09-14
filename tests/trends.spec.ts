@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { choose, entryRow, moveClockTo, resetClock, signIn } from "./helpers";
+import { choose, entryRow, expectRefusal, moveClockTo, resetClock, signIn } from "./helpers";
 import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 
@@ -279,12 +279,18 @@ test("the dashboard and its trends refuse unauthorized and unresolvable requests
   page,
   request,
 }) => {
-  expect((await request.get("/api/journal/trends")).status()).toBe(401);
+  await expectRefusal(
+    await request.get("/api/journal/trends"),
+    "unauthenticated",
+    401,
+  );
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/login/);
   await atMidday(page);
   for (const query of ["?kind=quarter", "?kind=month&date=2026-02-30", "?date="])
-    expect((await page.request.get(`/api/journal/trends${query}`)).status()).toBe(
+    await expectRefusal(
+      await page.request.get(`/api/journal/trends${query}`),
+      "invalid_period",
       400,
     );
   expect(

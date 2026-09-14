@@ -1,5 +1,6 @@
 import "server-only";
 import { betterAuth } from "better-auth";
+import { bearer } from "better-auth/plugins";
 import { Pool } from "pg";
 import { getConfig } from "./config";
 import { sheetsScope } from "./financial";
@@ -27,7 +28,7 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
     emailAndPassword: { enabled: false },
     socialProviders: {
       google: {
-        clientId: config.googleClientId,
+        clientId: config.googleClientIds,
         clientSecret: config.googleClientSecret,
         prompt: "select_account",
         requireEmailVerification: true,
@@ -58,6 +59,9 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
       },
     },
     session: { expiresIn: 60 * 60 * 24 * 7, cookieCache: { enabled: false } },
+    // The iOS app presents its session as a bearer token. Only the signed form
+    // is accepted, so the raw token stored in a session row is not enough.
+    plugins: [bearer({ requireSignature: true })],
     onAPIError: { errorURL: `${config.origin}/login`, throw: false },
     logger: { disabled: true },
   });
@@ -68,6 +72,15 @@ export function getAuth() {
   if (!config) return null;
   return (instance ??= createAuth(config));
 }
+// A request presenting a bearer token is judged by that token alone: its
+// cookies are set aside, so an invalid token never falls back to a session
+// cookie sent with it.
+export function presentedProof(headers: Headers) {
+  if (!headers.has("authorization")) return headers;
+  const bearerOnly = new Headers(headers);
+  bearerOnly.delete("cookie");
+  return bearerOnly;
+}
 
 // Export authorization is separate from sign-in: the session stays valid whether
 // or not this scope was ever granted, and a refusal here only blocks exporting.
@@ -76,7 +89,8 @@ export async function exportAccess(headers: Headers) {
   const auth = getAuth();
   if (!auth) return { status: "unavailable" } as const;
   try {
-    const accounts = await auth.api.listUserAccounts({ headers });
+    const proven = presentedProof(headers);
+    const accounts = await auth.api.listUserAccounts({ headers: proven });
     const account = accounts.find(
       (candidate) =>
         candidate.providerId === "google" &&
@@ -84,7 +98,7 @@ export async function exportAccess(headers: Headers) {
     );
     if (!account) return { status: "unauthorized" } as const;
     const token = await auth.api.getAccessToken({
-      headers,
+      headers: proven,
       body: { accountId: account.id },
     });
     // A refused refresh, a revoked grant and a dropped scope all read the same
@@ -102,12 +116,16 @@ export async function getAccess(headers: Headers) {
   const auth = getAuth();
   if (!config || !auth) return { status: "unavailable" } as const;
   try {
-    // Cookie caching is disabled: each request proves a live database-backed session.
-    const session = await auth.api.getSession({ headers });
+    // Cookie caching is disabled: each request proves a live database-backed
+    // session, from its bearer token when it presents one.
+    const proof = headers.has("authorization") ? "bearer" : "cookie";
+    const session = await auth.api.getSession({
+      headers: presentedProof(headers),
+    });
     if (!session) return { status: "unauthenticated" } as const;
     if (!isVerifiedOwner(session.user, config.ownerEmail))
       return { status: "forbidden" } as const;
-    return { status: "authorized", userId: session.user.id } as const;
+    return { status: "authorized", userId: session.user.id, proof } as const;
   } catch {
     return { status: "unavailable" } as const;
   }

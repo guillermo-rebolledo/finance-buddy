@@ -110,23 +110,25 @@ function snapshot(summary: Summary) {
 }
 
 export type ExportRefusal = {
-  status: number;
+  code:
+    | "reconnect_required"
+    | "export_unconfirmed"
+    | "export_period_mismatch"
+    | "not_confirmed";
   message: string;
-  reconnect?: true;
 };
 export const reconnectRefusal: ExportRefusal = {
-  status: 403,
-  reconnect: true,
+  code: "reconnect_required",
   message:
     "Google Sheets export is not connected, or the permission expired or was revoked. Connect Google Sheets export and try again. Your journal is unaffected.",
 };
 const unconfirmedRefusal: ExportRefusal = {
-  status: 409,
+  code: "export_unconfirmed",
   message:
     "An earlier attempt with this export was not confirmed, so nothing was created again. Check your Google Drive, then export again to create a new spreadsheet.",
 };
 const retryRefusal: ExportRefusal = {
-  status: 503,
+  code: "not_confirmed",
   message:
     "Google could not complete the export. Nothing was created and your journal is unchanged. Retry this same export.",
 };
@@ -178,7 +180,7 @@ export async function exportSnapshot(
     )
       return {
         refused: {
-          status: 409,
+          code: "export_period_mismatch",
           message:
             "This export already covers a different period. Reload and export the period you are viewing.",
         },

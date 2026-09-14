@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import {
   choose,
   entryRow,
+  expectRefusal,
   goToSection,
   moveClockTo,
   optionsOf,
@@ -112,7 +113,11 @@ test("custom categories are created per list and become available to matching en
     (c: { name: string }) => c.name === "Dividends",
   );
   // Lists stay separate: an income category cannot classify an expense.
-  expect((await post(page, { categoryId: dividends.id })).status()).toBe(400);
+  await expectRefusal(
+    await post(page, { categoryId: dividends.id }),
+    "invalid_field",
+    400,
+  );
 });
 
 test("names are bounded and duplicates are refused consistently", async ({
@@ -173,7 +178,7 @@ test("names are bounded and duplicates are refused consistently", async ({
     kind: "expense",
     name: "travel",
   });
-  expect(duplicate.status()).toBe(400);
+  await expectRefusal(duplicate, "invalid_field", 400);
   expect((await duplicate.json()).field).toBe("name");
   expect(
     (
@@ -193,7 +198,7 @@ test("names are bounded and duplicates are refused consistently", async ({
     id: travel.id,
     name: "dining",
   });
-  expect(rename.status()).toBe(400);
+  await expectRefusal(rename, "invalid_field", 400);
   expect((await rename.json()).field).toBe("name");
   // Renaming a category to its own name is not a duplicate.
   expect(
@@ -397,7 +402,7 @@ test("category changes are scoped to the signed-in owner", async ({
     { action: "rename", id: randomUUID(), name: "Ghost" },
     { action: "archive", id: "not-a-uuid" },
   ])
-    expect((await change(page, data)).status()).toBe(400);
+    await expectRefusal(await change(page, data), "invalid_field", 400);
   expect(JSON.stringify(await lists(page))).not.toContain("Private");
   expect(
     (
@@ -406,21 +411,29 @@ test("category changes are scoped to the signed-in owner", async ({
       ])
     ).rows,
   ).toEqual([{ name: "Private category", active: true }]);
-  expect((await request.get("/api/categories")).status()).toBe(401);
-  expect((await request.post("/api/categories", { data: {} })).status()).toBe(
+  await expectRefusal(
+    await request.get("/api/categories"),
+    "unauthenticated",
     401,
   );
-  expect(
-    (
-      await page.request.post("/api/categories", {
-        headers: { Origin: "https://foreign.test" },
-        data: { action: "archive", id: mine.income[0].id },
-      })
-    ).status(),
-  ).toBe(403);
-  expect(
-    (await page.request.post("/api/categories", { data: {} })).status(),
-  ).toBe(403);
+  await expectRefusal(
+    await request.post("/api/categories", { data: {} }),
+    "unauthenticated",
+    401,
+  );
+  await expectRefusal(
+    await page.request.post("/api/categories", {
+      headers: { Origin: "https://foreign.test" },
+      data: { action: "archive", id: mine.income[0].id },
+    }),
+    "request_not_allowed",
+    403,
+  );
+  await expectRefusal(
+    await page.request.post("/api/categories", { data: {} }),
+    "request_not_allowed",
+    403,
+  );
   const response = await page.request.get("/api/categories");
   expect(response.headers()["cache-control"]).toContain("no-store");
   expect(await response.json()).toEqual(mine);
@@ -441,7 +454,16 @@ test("the page reports a failed load and phone layout stays within the viewport"
     await expect(
       page.getByRole("alert").filter({ hasText: "Categories unavailable" }),
     ).toBeVisible();
-    expect((await page.request.get("/api/categories")).status()).toBe(503);
+    await expectRefusal(
+      await page.request.get("/api/categories"),
+      "unavailable",
+      503,
+    );
+    await expectRefusal(
+      await change(page, { action: "create", kind: "expense", name: "Pets" }),
+      "not_confirmed",
+      503,
+    );
   } finally {
     await pool.query("ALTER TABLE unavailable_category RENAME TO category");
   }
@@ -449,4 +471,66 @@ test("the page reports a failed load and phone layout stays within the viewport"
   await expect(
     page.getByRole("button", { name: "Archive Dining", exact: true }),
   ).toBeVisible();
+});
+
+test("a category created with its own identifier is created once, however often the creation is repeated", async ({
+  page,
+}) => {
+  await manage(page);
+  const id = randomUUID();
+  const create = { action: "create", kind: "expense", name: "Pets", id };
+  // A lost reply is retried as the same creation, and it still succeeds.
+  for (let attempt = 0; attempt < 3; attempt++)
+    expect((await change(page, create)).status()).toBe(200);
+  expect((await change(page, { ...create, name: "  Pets " })).status()).toBe(200);
+  expect(
+    (await lists(page)).expense.filter((c: { name: string }) => c.name === "Pets"),
+  ).toEqual([{ id, kind: "expense", name: "Pets", active: true }]);
+
+  // The identifier never becomes a different category.
+  for (const data of [
+    { ...create, name: "Vet" },
+    { ...create, kind: "income" },
+  ]) {
+    const refused = await change(page, data);
+    await expectRefusal(refused, "invalid_field", 400);
+    expect((await refused.json()).field).toBe("id");
+  }
+  for (const invalid of ["not-a-uuid", 42, null]) {
+    const refused = await change(page, { ...create, name: "Birds", id: invalid });
+    await expectRefusal(refused, "invalid_field", 400);
+    expect((await refused.json()).field).toBe("id");
+  }
+  // Someone else's identifier matches nothing and reveals nothing.
+  const foreignOwner = randomUUID(),
+    foreignCategory = randomUUID();
+  await pool.query(
+    'INSERT INTO "user"(id,name,email,"emailVerified","createdAt","updatedAt") VALUES ($1,$2,$3,true,now(),now())',
+    [foreignOwner, "Foreign", `${foreignOwner}@example.test`],
+  );
+  await pool.query(
+    "INSERT INTO category(id,owner_id,kind,name) VALUES ($1,$2,'expense','Private category')",
+    [foreignCategory, foreignOwner],
+  );
+  const foreign = await change(page, {
+    action: "create",
+    kind: "expense",
+    name: "Private category",
+    id: foreignCategory,
+  });
+  await expectRefusal(foreign, "invalid_field", 400);
+  expect((await foreign.json()).field).toBe("id");
+  // A fresh identifier cannot take a name that is already taken.
+  const taken = await change(page, { ...create, name: "pets", id: randomUUID() });
+  await expectRefusal(taken, "invalid_field", 400);
+  expect((await taken.json()).field).toBe("name");
+  // Without an identifier, creation is exactly as it was.
+  expect(
+    (await change(page, { action: "create", kind: "income", name: "Pets" })).status(),
+  ).toBe(200);
+
+  const current = await lists(page);
+  expect(current.expense.filter((c: { name: string }) => /pets/i.test(c.name))).toHaveLength(1);
+  expect(current.income.filter((c: { name: string }) => c.name === "Pets")).toHaveLength(1);
+  expect(JSON.stringify(current)).not.toMatch(/Vet|Birds|Private/);
 });
