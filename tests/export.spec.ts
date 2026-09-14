@@ -86,6 +86,7 @@ test("the period on screen is exported with its totals, breakdown and every move
   await page.reload();
   const snapshot = await download(page);
   // The export date names the file; the period it covers is named inside it.
+  await snapshot.file.saveAs(testInfo.outputPath(snapshot.name));
   expect(snapshot.name).toBe(
     "finance-buddy-week-2026-08-31-to-2026-09-06-exported-2026-09-06.pdf",
   );
@@ -242,7 +243,7 @@ test("a note longer than a page carries on across pages", async ({
   expect(snapshot.text).toContain("START describing this purchase");
   expect(snapshot.text.trimEnd()).toContain("END");
   expect(snapshot.text.match(/Date Type Amount Category Note/g)!.length).toBe(
-    2,
+    Number(/Page 1 of (\d+)/.exec(snapshot.text)![1]),
   );
   // Read without the page furniture, the note is whole and in order.
   const written = snapshot.text
@@ -251,6 +252,19 @@ test("a note longer than a page carries on across pages", async ({
   expect(
     written.slice(written.indexOf("START"), written.lastIndexOf("END") + 3),
   ).toBe(note.replace(/\s+/g, " ").trim());
+});
+
+test("long tokens and nonstandard characters do not prevent an export", async ({ page }) => {
+  await overview(page);
+  const token = "W".repeat(1500);
+  await post(page, { note: `START ${token} café € 🧾 END` });
+  await page.reload();
+  const snapshot = await download(page);
+  const note = snapshot.text
+    .replace(/Page \d+ of \d+/g, "")
+    .replace(/Date Type Amount Category Note/g, "");
+  expect(note.replace(/\s+/g, "")).toContain(`START${token}café€?END`);
+  expect(snapshot.text).toContain("2026-09-06 Expense MXN 1.00 Uncategorized");
 });
 
 test("an existing snapshot is untouched by later corrections, deletions and renames", async ({

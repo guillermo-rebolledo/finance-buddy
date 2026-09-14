@@ -10,6 +10,9 @@
     "cssVariables": true
   },
   "iconLibrary": "lucide",
+  "registries": {
+    "@pdfcn": "https://www.pdfcn.dev/r/{name}.json"
+  },
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",

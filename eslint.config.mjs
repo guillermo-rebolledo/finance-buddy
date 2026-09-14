@@ -17,5 +17,10 @@ export default defineConfig([
       "shadcn/require-static-classes": "error",
     },
   },
+  {
+    // PDF elements use Forme's point-based styles, not DOM/CSS properties.
+    files: ["src/components/pdf/**/*.tsx", "src/lib/pdf-primitives.tsx"],
+    rules: { "shadcn/no-inline-styles": "off" },
+  },
   globalIgnores([".next/**", "next-env.d.ts"]),
 ]);
