@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { periodKindDetails, type Summary } from "@/lib/financial";
+import {
+  budgetSource,
+  periodHasEnded,
+  periodKindDetails,
+  type Summary,
+} from "@/lib/financial";
 import { BudgetFigures } from "@/components/budget-figures";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +17,8 @@ import {
 } from "@/components/ui/card";
 
 // The selected period's budget, read-only: budgets are set and changed on the
-// Budgets page, which this card links to, so the dashboard only reports.
+// Budgets page, which this card links to, so the dashboard only reports. A
+// period that has ended says whether it ended under or over its budget.
 export function BudgetCard({ summary }: { summary: Summary }) {
   const { budget } = summary;
   const noun = periodKindDetails[summary.kind].label.toLowerCase();
@@ -24,7 +30,13 @@ export function BudgetCard({ summary }: { summary: Summary }) {
             <h2>Budget</h2>
           </CardTitle>
           <CardDescription>
-            {budget ? `Repeats every ${noun}.` : `No budget for this ${noun}.`}
+            {budget
+              ? `${budgetSource(budget)} budget.${
+                  periodHasEnded(summary, summary.today)
+                    ? ` It ended ${budget.overBudget ? "over" : "under"} budget.`
+                    : ""
+                }`
+              : `No budget for this ${noun}.`}
           </CardDescription>
           <CardAction>
             <Button variant="outline" size="sm" asChild>
@@ -35,7 +47,7 @@ export function BudgetCard({ summary }: { summary: Summary }) {
         {budget && (
           <CardContent>
             <div className="flex flex-col gap-4">
-              <BudgetFigures budget={budget} />
+              <BudgetFigures budget={budget} today={summary.today} />
             </div>
           </CardContent>
         )}

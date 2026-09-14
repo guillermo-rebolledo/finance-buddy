@@ -4,18 +4,35 @@ import { Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import {
   budgetDate,
+  budgetSource,
+  budgetStanding,
   isCalendarDate,
   money,
+  periodHasEnded,
   periodKindDetails,
   periodKinds,
+  spanLabel,
   validateBudget,
   type BudgetList,
+  type BudgetRemoval,
+  type BudgetView,
   type PeriodKind,
   type Summary,
 } from "@/lib/financial";
+import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { BudgetFigures } from "@/components/budget-figures";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +44,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Empty,
   EmptyContent,
@@ -65,12 +83,52 @@ async function resolvePeriod(kind: PeriodKind, date: string) {
   return (await response.json()) as Summary;
 }
 
-// Budgets are set and read here: the budgets in effect today, and the form
-// that sets a repeating budget for any current or future period.
+// Removes a period's one-off budget or stops repeating from it, announcing any
+// refusal. Resolves to the budget that then applies to the period, or to
+// undefined when the change was not confirmed.
+async function removeBudget(
+  kind: PeriodKind,
+  date: string,
+  scope: BudgetRemoval["scope"],
+): Promise<BudgetView | null | undefined> {
+  try {
+    const response = await fetch(
+      `/api/budgets?${new URLSearchParams({ kind, date })}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope }),
+      },
+    );
+    const result = await response.json();
+    if (response.ok) return result.budget;
+    toast.error(result.error || unconfirmed);
+  } catch {
+    toast.error(unconfirmed);
+  }
+}
+// Removes a period's one-off budget and says what applies to it now. Resolves
+// to whether the removal was confirmed.
+async function removeOneOff(kind: PeriodKind, date: string) {
+  const applies = await removeBudget(kind, date, "period");
+  if (applies === undefined) return false;
+  toast.success(
+    applies
+      ? `One-off budget removed. The repeating budget of ${money(applies.amount)} applies again.`
+      : "One-off budget removed.",
+  );
+  return true;
+}
+
+// Budgets are set and read here: the budgets in effect today, the repeating
+// budgets with their scheduled changes, upcoming one-off budgets, how ended
+// periods went, and the form that sets a budget for any current or future
+// period.
 export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
   const [list, setList] = useState(initial);
   const [loadError, setLoadError] = useState(!initial);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   // The period the form opened on, already resolved; a new key per opening, so
   // no earlier amount or refusal survives into it.
   const [form, setForm] = useState<{ key: number; period: Summary } | null>(
@@ -89,6 +147,31 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
       setLoadError(true);
     } finally {
       setLoading(false);
+    }
+  }
+  // Past arrives a page at a time; each page continues after the last.
+  async function showMore() {
+    if (!list?.nextBefore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const response = await fetch(
+        `/api/budgets?${new URLSearchParams({ before: list.nextBefore })}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw new Error();
+      const next: BudgetList = await response.json();
+      setList(
+        (current) =>
+          current && {
+            ...current,
+            past: [...current.past, ...next.past],
+            nextBefore: next.nextBefore,
+          },
+      );
+    } catch {
+      toast.error("Could not load more past budgets. Please retry.");
+    } finally {
+      setLoadingMore(false);
     }
   }
   async function openForm(kind: PeriodKind, date: string) {
@@ -120,7 +203,7 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
   );
   return (
     <main
-      aria-busy={loading || opening}
+      aria-busy={loading || opening || loadingMore}
       className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10"
     >
       <PageHeader
@@ -165,56 +248,50 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
       )}
       {list &&
         (hasBudgets ? (
-          <section aria-label="Now" className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <h2
+          <>
+            <section aria-label="Now" className="flex flex-col gap-4">
+              <SectionHeading
                 id="now-heading"
-                tabIndex={-1}
-                className="text-xl font-semibold tracking-tight"
-              >
-                Now
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Today, this week, and this month in Mexico City.
-              </p>
-            </div>
-            <div className="grid gap-4 lg:grid-cols-3">
-              {periodKinds.map((kind) => {
-                const detail = periodKindDetails[kind];
-                const budget = list.now[kind];
-                return (
-                  // A one-cell grid stretches the card, so the three periods
-                  // stand equally tall side by side.
-                  <section
-                    key={kind}
-                    aria-label={detail.current}
-                    className="grid"
-                  >
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>
-                          <h3>{detail.current}</h3>
-                        </CardTitle>
-                        <CardDescription>
-                          {budget
-                            ? detail.budgetLabel(budget, list.today)
-                            : `No budget for this ${detail.label.toLowerCase()}.`}
-                        </CardDescription>
+                title="Now"
+                note="Today, this week, and this month in Mexico City."
+              />
+              <div className="grid gap-4 lg:grid-cols-3">
+                {periodKinds.map((kind) => {
+                  const detail = periodKindDetails[kind];
+                  const budget = list.now[kind];
+                  return (
+                    // A one-cell grid stretches the card, so the three periods
+                    // stand equally tall side by side.
+                    <section
+                      key={kind}
+                      aria-label={detail.current}
+                      className="grid"
+                    >
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>
+                            <h3>{detail.current}</h3>
+                          </CardTitle>
+                          <CardDescription>
+                            {budget
+                              ? detail.budgetLabel(budget, list.today)
+                              : `No budget for this ${detail.label.toLowerCase()}.`}
+                          </CardDescription>
+                          {budget && (
+                            <CardAction>
+                              <Badge variant="secondary">
+                                {budgetSource(budget)}
+                              </Badge>
+                            </CardAction>
+                          )}
+                        </CardHeader>
                         {budget && (
-                          <CardAction>
-                            <Badge variant="secondary">
-                              {budget.repeats ? "Repeating" : "One-off"}
-                            </Badge>
-                          </CardAction>
+                          <CardContent>
+                            <div className="flex flex-col gap-4">
+                              <BudgetFigures budget={budget} today={list.today} />
+                            </div>
+                          </CardContent>
                         )}
-                      </CardHeader>
-                      {budget ? (
-                        <CardContent>
-                          <div className="flex flex-col gap-4">
-                            <BudgetFigures budget={budget} />
-                          </div>
-                        </CardContent>
-                      ) : (
                         <div className="mt-auto">
                           <CardFooter>
                             <Button
@@ -222,42 +299,66 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
                               disabled={opening}
                               onClick={() => openForm(kind, list.today)}
                             >
-                              Set budget
+                              {budget ? "Change" : "Set budget"}
                             </Button>
                           </CardFooter>
                         </div>
-                      )}
-                    </Card>
-                  </section>
-                );
-              })}
-            </div>
-          </section>
+                      </Card>
+                    </section>
+                  );
+                })}
+              </div>
+            </section>
+            {list.repeating.length > 0 && (
+              <RepeatingBudgets
+                list={list}
+                opening={opening}
+                onChange={openForm}
+                onStopped={load}
+              />
+            )}
+            {list.upcoming.length > 0 && (
+              <UpcomingBudgets
+                list={list}
+                opening={opening}
+                onChange={openForm}
+                onRemoved={load}
+              />
+            )}
+            {list.past.length > 0 && (
+              <PastBudgets
+                list={list}
+                loadingMore={loadingMore}
+                onMore={showMore}
+              />
+            )}
+          </>
         ) : (
           <Card>
             <CardContent>
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Wallet aria-hidden="true" />
-              </EmptyMedia>
-              <EmptyTitle>No budgets yet</EmptyTitle>
-              <EmptyDescription>
-                A budget is the most you intend to spend in a day, week, or
-                month. It is measured against that period&apos;s total
-                expenses, so refunds give room back and income never adds to
-                it. It repeats every period until you change it.
-              </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent>
-              <Button
-                disabled={opening}
-                onClick={() => openForm("week", list.today)}
-              >
-                Set your first budget
-              </Button>
-            </EmptyContent>
-          </Empty>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Wallet aria-hidden="true" />
+                  </EmptyMedia>
+                  <EmptyTitle>No budgets yet</EmptyTitle>
+                  <EmptyDescription>
+                    A budget is the most you intend to spend in a day, week, or
+                    month. It is measured against that period&apos;s total
+                    expenses, so refunds give room back and income never adds to
+                    it. It repeats every period until you change it, unless you
+                    set it for one period only.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button
+                    disabled={opening}
+                    onClick={() => openForm("week", list.today)}
+                  >
+                    Set your first budget
+                  </Button>
+                </EmptyContent>
+              </Empty>
             </CardContent>
           </Card>
         ))}
@@ -265,8 +366,302 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
   );
 }
 
-// Sets a repeating budget for the period chosen. Every choice of kind or date
-// is resolved by the server before the form describes it, and a period that has
+function SectionHeading({
+  id,
+  title,
+  note,
+}: {
+  id?: string;
+  title: string;
+  note: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <h2
+        id={id}
+        tabIndex={id ? -1 : undefined}
+        className="text-xl font-semibold tracking-tight"
+      >
+        {title}
+      </h2>
+      <p className="text-sm text-muted-foreground">{note}</p>
+    </div>
+  );
+}
+
+type Span = BudgetList["repeating"][number];
+
+// One row per repeating span, so a scheduled change reads as a row of its own.
+// A span that started earlier is changed or stopped from today's period, and
+// a scheduled one from its own first period.
+function RepeatingBudgets({
+  list,
+  opening,
+  onChange,
+  onStopped,
+}: {
+  list: BudgetList;
+  opening: boolean;
+  onChange: (kind: PeriodKind, date: string) => void;
+  onStopped: () => Promise<void>;
+}) {
+  const [stopping, setStopping] = useState<Span | null>(null);
+  const [busy, setBusy] = useState(false);
+  const from = (span: Span) =>
+    span.start > list.today ? span.start : list.today;
+  const fromText = (span: Span) =>
+    span.start > list.today
+      ? periodKindDetails[span.kind].spanStartName(span.start, list.today)
+      : periodKindDetails[span.kind].current.toLowerCase();
+
+  async function stop(span: Span) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if ((await removeBudget(span.kind, from(span), "onward")) === undefined)
+        return;
+      toast.success(
+        `${periodKindDetails[span.kind].label} budget stopped from ${fromText(span)}.`,
+      );
+      setStopping(null);
+      await onStopped();
+    } finally {
+      setBusy(false);
+    }
+  }
+  const noun = stopping && periodKindDetails[stopping.kind].label.toLowerCase();
+  return (
+    <section aria-label="Repeating" className="flex flex-col gap-4">
+      <SectionHeading
+        title="Repeating"
+        note="Budgets that apply to every period of their kind, with the changes scheduled ahead."
+      />
+      <Card>
+        <CardContent>
+          <ul className="divide-y">
+            {list.repeating.map((span) => (
+              <li
+                key={`${span.kind}:${span.start}`}
+                className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="break-all font-medium tabular-nums">
+                    {money(span.amount)} every{" "}
+                    {periodKindDetails[span.kind].label.toLowerCase()}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {spanLabel(span, list.today)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={opening}
+                    onClick={() => onChange(span.kind, from(span))}
+                  >
+                    Change
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStopping(span)}
+                  >
+                    Stop
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+      <AlertDialog
+        open={stopping !== null}
+        onOpenChange={(next) => {
+          if (busy || next) return;
+          setStopping(null);
+        }}
+      >
+        {stopping && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Stop the repeating {noun} budget?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                No {noun} budget repeats from {fromText(stopping)} on, and
+                every change scheduled after it goes too. Ended {noun}s keep
+                the budgets they had, and one-off budgets stay.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={busy}>Keep budget</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                disabled={busy}
+                onClick={(event) => {
+                  // The dialog closes only once the server confirms the stop.
+                  event.preventDefault();
+                  stop(stopping);
+                }}
+              >
+                {busy ? "Stopping…" : "Stop budget"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
+    </section>
+  );
+}
+
+// One-off budgets for future periods, each opened in the form to change it or
+// removed so the repeating budget, if any, applies to its period again.
+function UpcomingBudgets({
+  list,
+  opening,
+  onChange,
+  onRemoved,
+}: {
+  list: BudgetList;
+  opening: boolean;
+  onChange: (kind: PeriodKind, date: string) => void;
+  onRemoved: () => Promise<void>;
+}) {
+  const [removing, setRemoving] = useState("");
+  async function remove(budget: BudgetView) {
+    if (removing) return;
+    setRemoving(`${budget.kind}:${budget.start}`);
+    try {
+      if (await removeOneOff(budget.kind, budget.start)) await onRemoved();
+    } finally {
+      setRemoving("");
+    }
+  }
+  return (
+    <section aria-label="Upcoming one-offs" className="flex flex-col gap-4">
+      <SectionHeading
+        title="Upcoming one-offs"
+        note="Budgets set for a single future period, in place of any repeating budget."
+      />
+      <Card>
+        <CardContent>
+          <ul className="divide-y">
+            {list.upcoming.map((budget) => {
+              const key = `${budget.kind}:${budget.start}`;
+              return (
+                <li
+                  key={key}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="font-medium">
+                      {periodKindDetails[budget.kind].budgetLabel(
+                        budget,
+                        list.today,
+                      )}
+                    </span>
+                    <span className="break-all text-sm text-muted-foreground tabular-nums">
+                      {money(budget.amount)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={opening}
+                      onClick={() => onChange(budget.kind, budget.start)}
+                    >
+                      Change
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={removing !== ""}
+                      onClick={() => remove(budget)}
+                    >
+                      {removing === key ? "Removing…" : "Remove"}
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+// Ended periods that had a budget, newest first and read-only, each saying
+// whether it ended under or over.
+function PastBudgets({
+  list,
+  loadingMore,
+  onMore,
+}: {
+  list: BudgetList;
+  loadingMore: boolean;
+  onMore: () => void;
+}) {
+  return (
+    <section aria-label="Past" className="flex flex-col gap-4">
+      <SectionHeading
+        title="Past"
+        note="Ended periods that had a budget, newest first."
+      />
+      <Card>
+        <CardContent>
+          <ul className="divide-y">
+            {list.past.map((budget) => (
+              <li
+                key={`${budget.kind}:${budget.start}`}
+                className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">
+                      {periodKindDetails[budget.kind].budgetLabel(
+                        budget,
+                        list.today,
+                      )}
+                    </span>
+                    <Badge variant="secondary">
+                      {budgetSource(budget)}
+                    </Badge>
+                  </span>
+                  <span className="break-all text-sm text-muted-foreground tabular-nums">
+                    Budget {money(budget.amount)} · Total expenses{" "}
+                    {money(budget.expenses)}
+                  </span>
+                </div>
+                <span
+                  className={cn(
+                    "break-all font-medium tabular-nums",
+                    budget.overBudget && "text-destructive",
+                  )}
+                >
+                  {budgetStanding(budget, true)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+        {list.nextBefore && (
+          <CardFooter>
+            <Button variant="outline" disabled={loadingMore} onClick={onMore}>
+              {loadingMore ? "Loading…" : "Show more"}
+            </Button>
+          </CardFooter>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+// Sets a budget for the period chosen: repeating from it by default, or for
+// that period only when One-off is ticked. Every choice of kind or date is
+// resolved by the server before the form describes it, and a period that has
 // ended cannot be saved, since its budget stays as it was.
 function BudgetForm({
   initial,
@@ -281,16 +676,20 @@ function BudgetForm({
   const [date, setDate] = useState(initial.date);
   // Everything the form says about the period comes from the period last
   // resolved, and saving names that same period, so the label, the prefilled
-  // amount and the saved budget always agree.
+  // amount, One-off and the saved budget always agree.
   const [period, setPeriod] = useState(initial);
   const [amount, setAmount] = useState(initial.budget?.amount ?? "");
+  const [oneOff, setOneOff] = useState(initial.budget?.repeats === false);
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState(false);
   const [invalid, setInvalid] = useState("");
   const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const requested = useRef(0);
-  const noun = periodKindDetails[period.kind].label.toLowerCase();
-  const ended = period.end < period.today;
+  const detail = periodKindDetails[period.kind];
+  const noun = detail.label.toLowerCase();
+  const ended = periodHasEnded(period, period.today);
+  const busy = saving || removing;
 
   async function choose(nextKind: PeriodKind, nextDate: string) {
     setKind(nextKind);
@@ -304,6 +703,8 @@ function BudgetForm({
       if (sequence !== requested.current) return;
       setPeriod(resolved);
       setAmount(resolved.budget?.amount ?? "");
+      // A period with a one-off budget opens that budget, not a second one.
+      setOneOff(resolved.budget?.repeats === false);
       setInvalid("");
       setResolveError(false);
     } catch {
@@ -320,8 +721,8 @@ function BudgetForm({
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving) return;
-    const input = { amount: amount.trim(), oneOff: false };
+    if (busy) return;
+    const input = { amount: amount.trim(), oneOff };
     const refused = validateBudget(input);
     if (refused) return refuse(refused.message);
     setSaving(true);
@@ -341,16 +742,28 @@ function BudgetForm({
         else toast.error(result.error || unconfirmed);
         return;
       }
+      const budget: BudgetView | null = result.budget;
       toast.success(
-        result.budget
-          ? `Budget of ${money(result.budget.amount)} saved for every ${noun} from ${budgetDate(result.budget.start, period.today)}.`
-          : "Budget saved.",
+        !budget
+          ? "Budget saved."
+          : oneOff
+            ? `One-off budget of ${money(budget.amount)} saved ${detail.budgetPhrase(budget, period.today)}.`
+            : `Budget of ${money(budget.amount)} saved for every ${noun} from ${budgetDate(budget.start, period.today)}.`,
       );
       await onSaved();
     } catch {
       toast.error(unconfirmed);
     } finally {
       setSaving(false);
+    }
+  }
+  async function remove() {
+    if (busy) return;
+    setRemoving(true);
+    try {
+      if (await removeOneOff(period.kind, period.date)) await onSaved();
+    } finally {
+      setRemoving(false);
     }
   }
   return (
@@ -361,18 +774,19 @@ function BudgetForm({
             <h2>Set budget</h2>
           </CardTitle>
           <CardDescription>
-            The budget applies to the period you choose and every one after
-            it, until you change it.
+            {oneOff
+              ? "The budget applies to this period only, in place of any repeating budget."
+              : "The budget applies to the period you choose and every one after it, until you change it."}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form
             onSubmit={save}
             noValidate
-            aria-busy={resolving || saving}
+            aria-busy={resolving || busy}
             className="flex flex-col gap-6"
           >
-            <fieldset disabled={saving} className="min-w-0">
+            <fieldset disabled={busy} className="min-w-0">
               <FieldGroup>
                 <div className="grid gap-6 sm:grid-cols-2">
                   <Field>
@@ -409,10 +823,7 @@ function BudgetForm({
                 >
                   <p className="text-sm text-muted-foreground">Budgeting</p>
                   <p className="font-medium">
-                    {periodKindDetails[period.kind].budgetLabel(
-                      period,
-                      period.today,
-                    )}
+                    {detail.budgetLabel(period, period.today)}
                   </p>
                   {resolveError && (
                     <p className="text-sm text-destructive">
@@ -451,23 +862,42 @@ function BudgetForm({
                     </FieldDescription>
                   )}
                 </Field>
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="budget-one-off"
+                    checked={oneOff}
+                    onCheckedChange={(checked) => setOneOff(checked === true)}
+                  />
+                  <FieldLabel htmlFor="budget-one-off">
+                    One-off (this period only)
+                  </FieldLabel>
+                </Field>
               </FieldGroup>
             </fieldset>
             <div className="flex flex-wrap gap-3">
               <Button
                 type="submit"
                 size="lg"
-                disabled={
-                  saving || resolving || ended || !isCalendarDate(date)
-                }
+                disabled={busy || resolving || ended || !isCalendarDate(date)}
               >
                 {saving ? "Saving…" : "Save budget"}
               </Button>
+              {period.budget?.repeats === false && !ended && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  disabled={busy || resolving}
+                  onClick={remove}
+                >
+                  {removing ? "Removing…" : "Remove one-off"}
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
                 size="lg"
-                disabled={saving}
+                disabled={busy}
                 onClick={onCancel}
               >
                 Cancel

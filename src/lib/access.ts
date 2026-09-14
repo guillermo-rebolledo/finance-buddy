@@ -17,6 +17,7 @@ export const refusalStatus = {
   reconnect_required: 403,
   export_unconfirmed: 409,
   export_period_mismatch: 409,
+  period_ended: 409,
   upgrade_required: 426,
   unavailable: 503,
   not_confirmed: 503,
