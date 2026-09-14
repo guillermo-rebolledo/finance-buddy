@@ -252,6 +252,9 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
   );
 }
 
+// Sets a repeating budget for the period chosen. Every choice of kind or date
+// is resolved by the server before the form describes it, and a period that has
+// ended cannot be saved, since its budget stays as it was.
 function BudgetForm({
   initial,
   onCancel,

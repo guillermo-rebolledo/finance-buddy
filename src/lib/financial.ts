@@ -191,7 +191,7 @@ export const periodKindDetails: Record<
     note: string;
     // Whether a budget for the current period is also shared across its days
     // left; a day has only itself.
-    paced: boolean;
+    hasLeftPerDay: boolean;
     containing: (date: string) => Period;
     step: (start: string, direction: 1 | -1) => string;
     name: (period: Period) => string;
@@ -204,7 +204,7 @@ export const periodKindDetails: Record<
     label: "Day",
     current: "Today",
     note: "A day runs from midnight to midnight in Mexico City.",
-    paced: false,
+    hasLeftPerDay: false,
     containing: (date) => ({ start: date, end: date }),
     step: (start, direction) => addDays(start, direction),
     name: (period) => dayName.format(atNoon(period.start)),
@@ -216,7 +216,7 @@ export const periodKindDetails: Record<
     label: "Week",
     current: "This week",
     note: "A week runs Monday through Sunday in Mexico City.",
-    paced: true,
+    hasLeftPerDay: true,
     containing: (date) => {
       const start = addDays(date, -((atNoon(date).getUTCDay() + 6) % 7));
       // Counted from the week's own Monday, so a week may end in another month.
@@ -235,7 +235,7 @@ export const periodKindDetails: Record<
     label: "Month",
     current: "This month",
     note: "A month runs from its first through its last day in Mexico City.",
-    paced: true,
+    hasLeftPerDay: true,
     containing: (date) => {
       const start = atNoon(date);
       start.setUTCDate(1);
@@ -506,7 +506,7 @@ export function budgetFigures(
 ): BudgetView {
   const remaining = budget.amount - expenses;
   const daysLeft =
-    periodKindDetails[kind].paced &&
+    periodKindDetails[kind].hasLeftPerDay &&
     period.start <= today &&
     today <= period.end &&
     remaining >= 0n
@@ -551,7 +551,7 @@ export function budgetStanding(budget: BudgetView) {
 }
 // Left per day reads as what is still available, never as what should already
 // have been spent.
-export function budgetPace(budget: BudgetView) {
+export function leftPerDayText(budget: BudgetView) {
   if (budget.leftPerDay === null || budget.daysLeft === null) return null;
   return {
     amount: `${money(budget.leftPerDay)} left per day`,

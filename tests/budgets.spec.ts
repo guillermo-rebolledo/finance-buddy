@@ -432,7 +432,12 @@ test("the budgets list shows today's day, week and month budgets as of Mexico Ci
   await record(page, { date: "2026-09-08", amount: "500" });
   await setBudget(page, "?kind=week&date=2026-09-09", "2000");
   await setBudget(page, "?kind=month&date=2026-09-09", "8000");
-  const { now } = await list();
+  const listed = await list();
+  const { now } = listed;
+  expect(listed.repeating).toEqual([
+    { kind: "week", start: "2026-09-07", amount: "2000.00", until: null },
+    { kind: "month", start: "2026-09-01", amount: "8000.00", until: null },
+  ]);
   expect(now.day).toBeNull();
   expect(now.week).toEqual((await summary(page, "?kind=week")).budget);
   expect(now.month).toEqual((await summary(page, "?kind=month")).budget);
@@ -447,6 +452,26 @@ test("the budgets list shows today's day, week and month budgets as of Mexico Ci
   const earlier = await list();
   expect(earlier.today).toBe("2026-09-08");
   expect(earlier.now.week).toMatchObject({ daysLeft: 6, leftPerDay: "250.00" });
+
+  // A repeating span that has ended leaves the list, while the span that took
+  // over from it stays, listed day before week before month.
+  await setBudget(page, "?kind=day", "100");
+  await moveClockTo(midday);
+  await setBudget(page, "?kind=day", "200");
+  const later = await list();
+  expect(later.repeating).toEqual([
+    { kind: "day", start: "2026-09-09", amount: "200.00", until: null },
+    { kind: "week", start: "2026-09-07", amount: "2000.00", until: null },
+    { kind: "month", start: "2026-09-01", amount: "8000.00", until: null },
+  ]);
+  expect(later.now.day).toMatchObject({ amount: "200.00" });
+  await moveClockTo("2026-09-08T18:00:00Z");
+  expect((await list()).repeating[0]).toEqual({
+    kind: "day",
+    start: "2026-09-08",
+    amount: "100.00",
+    until: "2026-09-08",
+  });
 
   // Budgets that cannot be read are unavailable, never shown as none.
   await pool.query("ALTER TABLE budget RENAME TO unavailable_budget");
@@ -639,8 +664,24 @@ test("Budgets sits between Dashboard and Categories in the navigation and explai
     fullPage: true,
   });
   await page.getByRole("button", { name: "Set your first budget" }).click();
+  const form = page.getByRole("region", { name: "Set budget", exact: true });
+  await expect(form).toBeVisible();
+
+  // A first budget that starts next week still ends the empty state, though
+  // nothing applies today yet.
+  await form.getByLabel("Date", { exact: true }).fill("2026-09-16");
   await expect(
-    page.getByRole("region", { name: "Set budget", exact: true }),
+    form.getByText("Week of 14–20 Sep", { exact: true }),
+  ).toBeVisible();
+  await form.getByLabel("Amount (MXN)", { exact: true }).fill("500");
+  await form.getByRole("button", { name: "Save budget" }).click();
+  const now = page.getByRole("region", { name: "Now", exact: true });
+  await expect(now).toBeVisible();
+  await expect(page.getByText("No budgets yet", { exact: true })).toHaveCount(0);
+  await expect(
+    now
+      .getByRole("region", { name: "This week", exact: true })
+      .getByRole("button", { name: "Set budget", exact: true }),
   ).toBeVisible();
 });
 

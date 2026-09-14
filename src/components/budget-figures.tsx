@@ -1,5 +1,5 @@
 import {
-  budgetPace,
+  leftPerDayText,
   budgetStanding,
   money,
   type BudgetView,
@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 // how far over, left per day where it applies, then the budget and the total
 // expenses it is measured against.
 export function BudgetFigures({ budget }: { budget: BudgetView }) {
-  const pace = budgetPace(budget);
+  const perDay = leftPerDayText(budget);
   return (
     <>
       <p
@@ -21,10 +21,10 @@ export function BudgetFigures({ budget }: { budget: BudgetView }) {
       >
         {budgetStanding(budget)}
       </p>
-      {pace && (
+      {perDay && (
         <div className="flex flex-col gap-0.5">
-          <p className="break-all font-medium tabular-nums">{pace.amount}</p>
-          <p className="text-sm text-muted-foreground">{pace.days}</p>
+          <p className="break-all font-medium tabular-nums">{perDay.amount}</p>
+          <p className="text-sm text-muted-foreground">{perDay.days}</p>
         </div>
       )}
       <dl className="grid grid-cols-2 gap-4">
