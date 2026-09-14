@@ -8,6 +8,8 @@ import {
   moveClockTo,
   nativeClient,
   nativeSignIn,
+  notification,
+  openNavigation,
   resetClock,
   signIn,
 } from "./helpers";
@@ -86,8 +88,8 @@ test("a repeating budget applies from its own period onward, and days, weeks and
     expenses: "0.00",
     remaining: "2000.00",
     overBudget: false,
-    daysLeft: null,
-    leftPerDay: null,
+    daysLeft: 5,
+    leftPerDay: "400.00",
   });
   // The landing summary, the current week, carries the same view.
   expect((await summary(page)).budget).toEqual(week);
@@ -132,7 +134,12 @@ test("a repeating budget applies from its own period onward, and days, weeks and
   ).json();
   expect(replaced).toEqual({
     saved: true,
-    budget: { ...week, amount: "2500.50", remaining: "2500.50" },
+    budget: {
+      ...week,
+      amount: "2500.50",
+      remaining: "2500.50",
+      leftPerDay: "500.10",
+    },
   });
   expect(
     await (
@@ -247,6 +254,238 @@ test("a budget measures the summary's total expenses, where refunds give room ba
   expect(day.budget.expenses).toBe(day.expenses);
 });
 
+test("left per day shares the remaining budget across the days left in the current week or month, counting today", async ({
+  page,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  // Set while an earlier week and month were current, so the same budgets also
+  // cover periods that have ended since.
+  await moveClockTo("2026-08-31T18:00:00Z");
+  await setBudget(page, "?kind=week", "1000");
+  await setBudget(page, "?kind=month", "3000");
+  await moveClockTo(midday);
+  await setBudget(page, "?kind=day", "300");
+  await record(page, { date: "2026-09-08", amount: "0.03" });
+  const figures = async (query: string) => {
+    const { budget } = await summary(page, query);
+    return [budget.remaining, budget.daysLeft, budget.leftPerDay];
+  };
+  // Wednesday through Sunday is five days; 999.97 ÷ 5 rounds down to 199.99.
+  expect(await figures("?kind=week&date=2026-09-09")).toEqual([
+    "999.97",
+    5,
+    "199.99",
+  ]);
+  // The 9th through the 30th is twenty-two days; 2,999.97 ÷ 22 is 136.362….
+  expect(await figures("?kind=month&date=2026-09-09")).toEqual([
+    "2999.97",
+    22,
+    "136.36",
+  ]);
+  // Day budgets, ended periods and future periods have no left per day.
+  expect(await figures("?kind=day&date=2026-09-09")).toEqual([
+    "300.00",
+    null,
+    null,
+  ]);
+  for (const query of [
+    "?kind=week&date=2026-09-06",
+    "?kind=week&date=2026-09-14",
+    "?kind=month&date=2026-08-31",
+    "?kind=month&date=2026-10-01",
+  ])
+    expect((await figures(query)).slice(1)).toEqual([null, null]);
+
+  // Spending exactly the budget leaves nothing per day; over budget shows the
+  // overspend instead of a daily figure.
+  await record(page, { date: "2026-09-09", amount: "999.97" });
+  expect(await figures("?kind=week&date=2026-09-09")).toEqual([
+    "0.00",
+    5,
+    "0.00",
+  ]);
+  await record(page, { date: "2026-09-09", amount: "0.01" });
+  const over = (await summary(page, "?kind=week&date=2026-09-09")).budget;
+  expect(over).toMatchObject({
+    overBudget: true,
+    remaining: "-0.01",
+    daysLeft: null,
+    leftPerDay: null,
+  });
+  // The month still has room: 1,999.99 ÷ 22 is 90.908….
+  expect(await figures("?kind=month&date=2026-09-09")).toEqual([
+    "1999.99",
+    22,
+    "90.90",
+  ]);
+  // A budget write replies with the same figures: 1,199.99 ÷ 22 is 54.545….
+  expect(
+    await setBudget(page, "?kind=month&date=2026-09-09", "2200"),
+  ).toMatchObject({ remaining: "1199.99", daysLeft: 22, leftPerDay: "54.54" });
+});
+
+test("left per day follows Mexico City days across week and month edges", async ({
+  page,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  const current = async (kind: string) => {
+    const { today, start, budget } = await summary(page, `?kind=${kind}`);
+    return [today, start, budget.daysLeft, budget.leftPerDay];
+  };
+  // 23:59 on Saturday 31 January in Mexico City, already February in UTC: the
+  // last day of a month leaves its whole remaining budget for today.
+  await moveClockTo("2026-02-01T05:59:00Z");
+  await setBudget(page, "?kind=month", "3100");
+  expect(await current("month")).toEqual([
+    "2026-01-31",
+    "2026-01-01",
+    1,
+    "3100.00",
+  ]);
+  // From the 31st into a twenty-eight-day February: 3,100 ÷ 28 is 110.714….
+  await moveClockTo("2026-02-01T06:00:00Z");
+  expect(await current("month")).toEqual([
+    "2026-02-01",
+    "2026-02-01",
+    28,
+    "110.71",
+  ]);
+  // 23:59 on Sunday 30 August in Mexico City, already Monday in UTC: the last
+  // day of the week leaves its whole remaining budget for today.
+  await moveClockTo("2026-08-31T05:59:00Z");
+  await setBudget(page, "?kind=week", "700");
+  expect(await current("week")).toEqual([
+    "2026-08-30",
+    "2026-08-24",
+    1,
+    "700.00",
+  ]);
+  expect(await current("month")).toEqual([
+    "2026-08-30",
+    "2026-08-01",
+    2,
+    "1550.00",
+  ]);
+  // Midnight in Mexico City starts a new week on its first day, and the 31st is
+  // the last day of August.
+  await moveClockTo("2026-08-31T06:00:00Z");
+  expect(await current("week")).toEqual([
+    "2026-08-31",
+    "2026-08-31",
+    7,
+    "100.00",
+  ]);
+  expect(await current("month")).toEqual([
+    "2026-08-31",
+    "2026-08-01",
+    1,
+    "3100.00",
+  ]);
+  const ended = (await summary(page, "?kind=week&date=2026-08-30")).budget;
+  expect([ended.daysLeft, ended.leftPerDay]).toEqual([null, null]);
+  // The first day of a thirty-day month: 3,100 ÷ 30 is 103.333….
+  await moveClockTo("2026-09-01T06:00:00Z");
+  expect(await current("month")).toEqual([
+    "2026-09-01",
+    "2026-09-01",
+    30,
+    "103.33",
+  ]);
+});
+
+test("the budgets list shows today's day, week and month budgets as of Mexico City's today", async ({
+  page,
+  request,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await expectRefusal(
+    await request.get("/api/budgets"),
+    "unauthenticated",
+    401,
+  );
+  await atMidday(page);
+  const list = async () => {
+    const response = await page.request.get("/api/budgets");
+    expect(response.status()).toBe(200);
+    expect(response.headers()["cache-control"]).toContain("no-store");
+    return response.json();
+  };
+  expect(await list()).toEqual({
+    today: "2026-09-09",
+    currency: "MXN",
+    now: { day: null, week: null, month: null },
+    repeating: [],
+    upcoming: [],
+    past: [],
+    nextBefore: null,
+  });
+  await expectRefusal(
+    await page.request.get("/api/budgets", {
+      headers: { Origin: "https://attacker.example" },
+    }),
+    "request_not_allowed",
+    403,
+  );
+
+  await record(page, { date: "2026-09-08", amount: "500" });
+  await setBudget(page, "?kind=week&date=2026-09-09", "2000");
+  await setBudget(page, "?kind=month&date=2026-09-09", "8000");
+  const listed = await list();
+  const { now } = listed;
+  expect(listed.repeating).toEqual([
+    { kind: "week", start: "2026-09-07", amount: "2000.00", until: null },
+    { kind: "month", start: "2026-09-01", amount: "8000.00", until: null },
+  ]);
+  expect(now.day).toBeNull();
+  expect(now.week).toEqual((await summary(page, "?kind=week")).budget);
+  expect(now.month).toEqual((await summary(page, "?kind=month")).budget);
+  expect(now.week).toMatchObject({
+    start: "2026-09-07",
+    remaining: "1500.00",
+    daysLeft: 5,
+    leftPerDay: "300.00",
+  });
+  // Now follows the server's today, whenever the budgets were set.
+  await moveClockTo("2026-09-08T18:00:00Z");
+  const earlier = await list();
+  expect(earlier.today).toBe("2026-09-08");
+  expect(earlier.now.week).toMatchObject({ daysLeft: 6, leftPerDay: "250.00" });
+
+  // A repeating span that has ended leaves the list, while the span that took
+  // over from it stays, listed day before week before month.
+  await setBudget(page, "?kind=day", "100");
+  await moveClockTo(midday);
+  await setBudget(page, "?kind=day", "200");
+  const later = await list();
+  expect(later.repeating).toEqual([
+    { kind: "day", start: "2026-09-09", amount: "200.00", until: null },
+    { kind: "week", start: "2026-09-07", amount: "2000.00", until: null },
+    { kind: "month", start: "2026-09-01", amount: "8000.00", until: null },
+  ]);
+  expect(later.now.day).toMatchObject({ amount: "200.00" });
+  await moveClockTo("2026-09-08T18:00:00Z");
+  expect((await list()).repeating[0]).toEqual({
+    kind: "day",
+    start: "2026-09-08",
+    amount: "100.00",
+    until: "2026-09-08",
+  });
+
+  // Budgets that cannot be read are unavailable, never shown as none.
+  await pool.query("ALTER TABLE budget RENAME TO unavailable_budget");
+  try {
+    await expectRefusal(
+      await page.request.get("/api/budgets"),
+      "unavailable",
+      503,
+    );
+  } finally {
+    await pool.query("ALTER TABLE unavailable_budget RENAME TO budget");
+  }
+});
+
 test("setting a budget refuses unauthorized requests, unresolvable periods and invalid fields without saving anything", async ({
   page,
   request,
@@ -342,6 +581,9 @@ test("another person can neither see nor change the owner's budgets", async ({
       (await summary(stranger, "?kind=week&date=2026-09-09")).budget,
     ).toBeNull();
     expect(
+      (await (await stranger.request.get("/api/budgets")).json()).now.week,
+    ).toBeNull();
+    expect(
       await setBudget(stranger, "?kind=week&date=2026-09-09", "10"),
     ).toMatchObject({ amount: "10.00", expenses: "0.00" });
     expect(
@@ -379,10 +621,154 @@ test("a native client sets a budget with its bearer token and reads it in the su
   });
   const read = await app("/api/journal?kind=week&date=2026-09-09");
   expect((await read.json()).budget).toEqual(budget);
+  const listed = await app("/api/budgets");
+  expect(listed.status).toBe(200);
+  expect((await listed.json()).now.week).toEqual(budget);
   // The web reads the same budget the app set.
   expect(
     (await summary(page, "?kind=week&date=2026-09-09")).budget,
   ).toEqual(budget);
+});
+
+test("Budgets sits between Dashboard and Categories in the navigation and explains budgets before the first one is set", async ({
+  page,
+}, testInfo) => {
+  await atMidday(page);
+  const sections = page.getByRole("navigation", { name: "Sections" });
+  const link = sections.getByRole("link", { name: "Budgets", exact: true });
+  await openNavigation(page, link);
+  // No badge or count travels with the link.
+  await expect(sections.getByRole("link")).toHaveText([
+    "Entries",
+    "Dashboard",
+    "Budgets",
+    "Categories",
+    "Settings",
+  ]);
+  await link.click();
+  await expect(
+    page.getByRole("heading", { name: "Budgets", level: 1 }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/budgets$/);
+  // On a phone the drawer closes once a section is chosen.
+  if (testInfo.project.name === "phone") await expect(sections).toBeHidden();
+  else await expect(link).toHaveAttribute("aria-current", "page");
+
+  await expect(page.getByText("No budgets yet", { exact: true })).toBeVisible();
+  await expect(page.getByText(/most you intend to spend/)).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Now", exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("budgets-empty.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Set your first budget" }).click();
+  const form = page.getByRole("region", { name: "Set budget", exact: true });
+  await expect(form).toBeVisible();
+
+  // A first budget that starts next week still ends the empty state, though
+  // nothing applies today yet.
+  await form.getByLabel("Date", { exact: true }).fill("2026-09-16");
+  await expect(
+    form.getByText("Week of 14–20 Sep", { exact: true }),
+  ).toBeVisible();
+  await form.getByLabel("Amount (MXN)", { exact: true }).fill("500");
+  await form.getByRole("button", { name: "Save budget" }).click();
+  const now = page.getByRole("region", { name: "Now", exact: true });
+  await expect(now).toBeVisible();
+  await expect(page.getByText("No budgets yet", { exact: true })).toHaveCount(0);
+  await expect(
+    now
+      .getByRole("region", { name: "This week", exact: true })
+      .getByRole("button", { name: "Set budget", exact: true }),
+  ).toBeVisible();
+});
+
+test("a weekly budget set from the form appears in Now with what is left per day", async ({
+  page,
+}, testInfo) => {
+  await atMidday(page);
+  await record(page, { date: "2026-09-08", amount: "1500" });
+  await page.goto("/budgets");
+  await page.getByRole("button", { name: "Set your first budget" }).click();
+  const form = page.getByRole("region", { name: "Set budget", exact: true });
+  const amount = form.getByLabel("Amount (MXN)", { exact: true });
+  const date = form.getByLabel("Date", { exact: true });
+  const save = form.getByRole("button", { name: "Save budget" });
+  // The form opens on the current week.
+  await expect(form.getByLabel("Period", { exact: true })).toHaveText("Week");
+  await expect(date).toHaveValue("2026-09-09");
+  await expect(form.getByText("Week of 7–13 Sep", { exact: true })).toBeVisible();
+  await expect(amount).toHaveValue("");
+
+  await amount.fill("12.345");
+  await save.click();
+  await expect(amount).toHaveAttribute("aria-invalid", "true");
+  await expect(form.getByText(/up to two decimal places/)).toBeVisible();
+  await amount.fill("2000");
+  await save.click();
+  await expect(
+    notification(page, "Budget of MXN 2,000.00 saved for every week from 7 Sep."),
+  ).toBeVisible();
+  await expect(form).toHaveCount(0);
+
+  const now = page.getByRole("region", { name: "Now", exact: true });
+  const week = now.getByRole("region", { name: "This week", exact: true });
+  await expect(week.getByText("MXN 500.00 left", { exact: true })).toBeVisible();
+  await expect(week.getByText("Repeating", { exact: true })).toBeVisible();
+  await expect(
+    week.getByText("MXN 100.00 left per day", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    week.getByText("5 days left, counting today", { exact: true }),
+  ).toBeVisible();
+  for (const name of ["Today", "This month"])
+    await expect(
+      now
+        .getByRole("region", { name, exact: true })
+        .getByRole("button", { name: "Set budget", exact: true }),
+    ).toBeVisible();
+  await expect(page.getByText("No budgets yet", { exact: true })).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("budgets-now.png"),
+    fullPage: true,
+  });
+
+  // Each period in Now opens the form on itself, with the budget that already
+  // applies to the chosen period filled in.
+  await now
+    .getByRole("region", { name: "This month", exact: true })
+    .getByRole("button", { name: "Set budget", exact: true })
+    .click();
+  await expect(form.getByLabel("Period", { exact: true })).toHaveText("Month");
+  await expect(form.getByText("September 2026", { exact: true })).toBeVisible();
+  await expect(amount).toHaveValue("");
+  await choose(page, "Period", "Week");
+  await expect(form.getByText("Week of 7–13 Sep", { exact: true })).toBeVisible();
+  await expect(amount).toHaveValue("2000.00");
+  await date.fill("2026-09-16");
+  await expect(
+    form.getByText("Week of 14–20 Sep", { exact: true }),
+  ).toBeVisible();
+  await expect(amount).toHaveValue("2000.00");
+  await expect(save).toBeEnabled();
+  // A period that has ended keeps the budget it had.
+  await date.fill("2026-09-01");
+  await expect(
+    form.getByText("Week of 31 Aug – 6 Sep", { exact: true }),
+  ).toBeVisible();
+  await expect(form.getByText(/This week has ended/)).toBeVisible();
+  await expect(save).toBeDisabled();
+  await page.screenshot({
+    path: testInfo.outputPath("budgets-form-ended.png"),
+    fullPage: true,
+  });
+  await form.getByRole("button", { name: "Cancel" }).click();
+  await expect(form).toHaveCount(0);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBe(true);
 });
 
 test("the dashboard shows the selected period's budget read-only and follows the period on screen", async ({
@@ -406,6 +792,13 @@ test("the dashboard shows the selected period's budget read-only and follows the
   await expect(card.getByText("MXN 500.00 left", { exact: true })).toBeVisible();
   await expect(card.getByText("MXN 2,000.00", { exact: true })).toBeVisible();
   await expect(card.getByText("MXN 1,500.00", { exact: true })).toBeVisible();
+  // Wednesday through Sunday leaves five days for the MXN 500.00 left.
+  await expect(
+    card.getByText("MXN 100.00 left per day", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    card.getByText("5 days left, counting today", { exact: true }),
+  ).toBeVisible();
   // Nothing on the card changes a budget.
   await expect(card.getByRole("button")).toHaveCount(0);
   await expect(card.getByRole("textbox")).toHaveCount(0);
@@ -431,6 +824,8 @@ test("the dashboard shows the selected period's budget read-only and follows the
   await expect(
     card.getByText("MXN 2,000.00 left", { exact: true }),
   ).toBeVisible();
+  // A week that has not started yet has no left per day.
+  await expect(card.getByText(/left per day/)).toHaveCount(0);
   await choose(page, "Period", "Month");
   await expect(
     page.getByRole("heading", { name: "This month", level: 1 }),
@@ -446,6 +841,7 @@ test("the dashboard shows the selected period's budget read-only and follows the
   await expect(
     card.getByText("Over by MXN 100.00", { exact: true }),
   ).toBeVisible();
+  await expect(card.getByText(/left per day/)).toHaveCount(0);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBe(true);

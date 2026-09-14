@@ -2,10 +2,14 @@ import "server-only";
 import { database } from "./database";
 import {
   budgetFigures,
+  decimal,
+  mexicoToday,
+  periodKinds,
   periodStart,
   shiftPeriod,
   summaryPeriod,
   totalsOf,
+  type BudgetList,
   type BudgetView,
   type Period,
   type PeriodKind,
@@ -29,6 +33,7 @@ export function budgetOf(
   kind: PeriodKind,
   period: Period,
   expenses: bigint,
+  today: string,
 ): BudgetView | null {
   return stored
     ? budgetFigures(
@@ -36,6 +41,7 @@ export function budgetOf(
         kind,
         period,
         expenses,
+        today,
       )
     : null;
 }
@@ -59,7 +65,94 @@ export async function budgetView(owner: string, request: SummaryRequest) {
     request.kind,
     period,
     totalsOf(data.movements).expenses,
+    mexicoToday(),
   );
+}
+// Today's day, week and month, each with its budget. One statement reads the
+// three budgets and every movement across the three periods, so each view's
+// total expenses are exactly what that period's summary reports.
+export async function listBudgets(owner: string): Promise<BudgetList> {
+  const today = mexicoToday();
+  const periods = periodKinds.map((kind) => ({
+    kind,
+    period: summaryPeriod(kind, today),
+  }));
+  const from = periods.map(({ period }) => period.start).sort()[0];
+  const to = periods.map(({ period }) => period.end).sort().at(-1)!;
+  const values = [owner, from, to];
+  // Each value is bound where it is used, so the statement names its own
+  // placeholders instead of counting them.
+  const bind = (value: string) => `$${values.push(value)}`;
+  const budgets = periods.map(
+    ({ kind, period }) =>
+      `(SELECT row_to_json(b) FROM (${periodBudgetQuery("$1", bind(kind), bind(period.start))}) b) AS "${kind}",`,
+  );
+  const {
+    rows: [data],
+  } = await database().query(
+    `SELECT
+    ${budgets.join("\n")}
+    COALESCE((SELECT json_agg(m) FROM (
+      SELECT kind, amount_centavos::text AS centavos,
+        to_char(movement_date,'YYYY-MM-DD') AS date
+      FROM financial_movement
+      WHERE owner_id=$1 AND movement_date BETWEEN $2::date AND $3::date
+    ) m), '[]') AS movements,
+    COALESCE((SELECT json_agg(r ORDER BY r.start) FROM (
+      SELECT period_kind AS kind, to_char(first_period_start,'YYYY-MM-DD') AS start,
+        amount_centavos::text AS centavos, to_char(last_period_start,'YYYY-MM-DD') AS until
+      FROM budget WHERE owner_id=$1 AND repeats
+    ) r), '[]') AS repeating`,
+    values,
+  );
+  const movements: { kind: string; centavos: string; date: string }[] =
+    data.movements;
+  const now = Object.fromEntries(
+    periods.map(({ kind, period }) => [
+      kind,
+      budgetOf(
+        data[kind],
+        kind,
+        period,
+        totalsOf(
+          movements.filter(
+            ({ date }) => date >= period.start && date <= period.end,
+          ),
+        ).expenses,
+        today,
+      ),
+    ]),
+  ) as BudgetList["now"];
+  // Repeating spans still in effect or scheduled: a span whose last period
+  // started before its kind's current period has ended and belongs to history.
+  const current = Object.fromEntries(
+    periods.map(({ kind, period }) => [kind, period.start]),
+  );
+  const repeating = (
+    data.repeating as {
+      kind: PeriodKind;
+      start: string;
+      centavos: string;
+      until: string | null;
+    }[]
+  )
+    .filter(({ kind, until }) => until === null || until >= current[kind])
+    .sort((a, b) => periodKinds.indexOf(a.kind) - periodKinds.indexOf(b.kind))
+    .map(({ kind, start, centavos, until }) => ({
+      kind,
+      start,
+      amount: decimal(BigInt(centavos)),
+      until,
+    }));
+  return {
+    today,
+    currency: "MXN",
+    now,
+    repeating,
+    upcoming: [],
+    past: [],
+    nextBefore: null,
+  };
 }
 // Sets the repeating amount from one period onward. A span starting there takes
 // the new amount. A span that started earlier is closed at the period before,

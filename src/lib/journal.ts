@@ -130,7 +130,7 @@ export async function summarize(
       ...group,
       amount: decimal(value),
     })),
-    budget: budgetOf(data.budget, request.kind, period, expenses),
+    budget: budgetOf(data.budget, request.kind, period, expenses, today),
   };
 }
 export async function saveEntry(

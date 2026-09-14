@@ -134,6 +134,9 @@ function addDays(date: string, count: number) {
   moved.setUTCDate(moved.getUTCDate() + count);
   return calendarDate(moved);
 }
+function daysBetween(from: string, to: string) {
+  return Math.round((atNoon(to).getTime() - atNoon(from).getTime()) / 86400000);
+}
 const dayName = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
   weekday: "long",
@@ -167,6 +170,16 @@ const monthTick = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
   month: "short",
 });
+const weekdayName = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  weekday: "long",
+});
+// A budget names its days the way a person says them, "7 Sep", adding the year
+// only when it is not the current one.
+export function budgetDate(date: string, today: string) {
+  const year = date.slice(0, 4);
+  return `${atNoon(date).getUTCDate()} ${monthTick.format(atNoon(date))}${year === today.slice(0, 4) ? "" : ` ${year}`}`;
+}
 // One descriptor per kind of summary period: how it reads, which days it
 // contains, how a step of exactly one period moves, and how it is labelled.
 // Every other place asks this map instead of testing the kind again.
@@ -176,25 +189,34 @@ export const periodKindDetails: Record<
     label: string;
     current: string;
     note: string;
+    // Whether a budget for the current period is also shared across its days
+    // left; a day has only itself.
+    hasLeftPerDay: boolean;
     containing: (date: string) => Period;
     step: (start: string, direction: 1 | -1) => string;
     name: (period: Period) => string;
     tick: (period: Period) => string;
+    // How the budget form and Now name the period, such as "Week of 14–20 Sep".
+    budgetLabel: (period: Period, today: string) => string;
   }
 > = {
   day: {
     label: "Day",
     current: "Today",
     note: "A day runs from midnight to midnight in Mexico City.",
+    hasLeftPerDay: false,
     containing: (date) => ({ start: date, end: date }),
     step: (start, direction) => addDays(start, direction),
     name: (period) => dayName.format(atNoon(period.start)),
     tick: (period) => dayTick.format(atNoon(period.start)),
+    budgetLabel: (period, today) =>
+      `${weekdayName.format(atNoon(period.start))} ${budgetDate(period.start, today)}`,
   },
   week: {
     label: "Week",
     current: "This week",
     note: "A week runs Monday through Sunday in Mexico City.",
+    hasLeftPerDay: true,
     containing: (date) => {
       const start = addDays(date, -((atNoon(date).getUTCDay() + 6) % 7));
       // Counted from the week's own Monday, so a week may end in another month.
@@ -204,11 +226,16 @@ export const periodKindDetails: Record<
     name: (period) =>
       `${boundaryName.format(atNoon(period.start))} – ${boundaryName.format(atNoon(period.end))}`,
     tick: (period) => weekTick.format(atNoon(period.start)),
+    budgetLabel: (period, today) =>
+      period.start.slice(0, 7) === period.end.slice(0, 7)
+        ? `Week of ${atNoon(period.start).getUTCDate()}–${budgetDate(period.end, today)}`
+        : `Week of ${budgetDate(period.start, today)} – ${budgetDate(period.end, today)}`,
   },
   month: {
     label: "Month",
     current: "This month",
     note: "A month runs from its first through its last day in Mexico City.",
+    hasLeftPerDay: true,
     containing: (date) => {
       const start = atNoon(date);
       start.setUTCDate(1);
@@ -224,6 +251,7 @@ export const periodKindDetails: Record<
     },
     name: (period) => monthName.format(atNoon(period.start)),
     tick: (period) => monthTick.format(atNoon(period.start)),
+    budgetLabel: (period) => monthName.format(atNoon(period.start)),
   },
 };
 export const periodKinds = Object.keys(periodKindDetails) as PeriodKind[];
@@ -466,13 +494,24 @@ export type BudgetView = Period & {
 // The one calculation behind every budget figure. The remaining budget is
 // signed and never clamped, so refunds can lift it above the budget, and a
 // period is over budget only once its total expenses exceed the budget.
+// Left per day describes what remains for the current week or month, today
+// included, so a day, an ended or future period, or an overspent one has none.
+// It rounds down to the centavo, so following it never goes over budget.
 export function budgetFigures(
   budget: { amount: bigint; repeats: boolean },
   kind: PeriodKind,
   period: Period,
   expenses: bigint,
+  today: string,
 ): BudgetView {
   const remaining = budget.amount - expenses;
+  const daysLeft =
+    periodKindDetails[kind].hasLeftPerDay &&
+    period.start <= today &&
+    today <= period.end &&
+    remaining >= 0n
+      ? daysBetween(today, period.end) + 1
+      : null;
   return {
     kind,
     start: period.start,
@@ -482,15 +521,45 @@ export function budgetFigures(
     expenses: decimal(expenses),
     remaining: decimal(remaining),
     overBudget: remaining < 0n,
-    daysLeft: null,
-    leftPerDay: null,
+    daysLeft,
+    leftPerDay:
+      daysLeft === null ? null : decimal(remaining / BigInt(daysLeft)),
   };
 }
+// The Budgets page: the budgets in effect today for each kind of period, then
+// the repeating spans, upcoming one-off budgets and past periods, which later
+// work fills.
+export type BudgetList = {
+  today: string;
+  currency: "MXN";
+  now: Record<PeriodKind, BudgetView | null>;
+  repeating: {
+    kind: PeriodKind;
+    start: string;
+    amount: string;
+    until: string | null;
+  }[];
+  upcoming: BudgetView[];
+  past: BudgetView[];
+  nextBefore: string | null;
+};
 // An overspent period reads as the excess, never as a negative remaining budget.
 export function budgetStanding(budget: BudgetView) {
   return budget.overBudget
     ? `Over by ${money(budget.remaining.slice(1))}`
     : `${money(budget.remaining)} left`;
+}
+// Left per day reads as what is still available, never as what should already
+// have been spent.
+export function leftPerDayText(budget: BudgetView) {
+  if (budget.leftPerDay === null || budget.daysLeft === null) return null;
+  return {
+    amount: `${money(budget.leftPerDay)} left per day`,
+    days:
+      budget.daysLeft === 1
+        ? "Today is the last day"
+        : `${budget.daysLeft} days left, counting today`,
+  };
 }
 export type BudgetInput = { amount: string; oneOff: boolean };
 export type BudgetError = { field: keyof BudgetInput | null; message: string };

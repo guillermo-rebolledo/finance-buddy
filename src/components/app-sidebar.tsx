@@ -7,6 +7,7 @@ import {
   NotebookPen,
   Settings,
   Tags,
+  Wallet,
 } from "lucide-react";
 import { AuthButton } from "@/components/auth-button";
 import { ModeToggle } from "@/components/mode-toggle";
@@ -31,6 +32,7 @@ const sections = [
     links: [
       { href: "/", label: "Entries", icon: NotebookPen },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/budgets", label: "Budgets", icon: Wallet },
       { href: "/categories", label: "Categories", icon: Tags },
     ],
   },
