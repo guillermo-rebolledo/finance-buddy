@@ -73,19 +73,20 @@ function SchemeChoice({ mode }: { mode: SchemeMode }) {
         aria-label={legend}
         value={scheme}
         onValueChange={(next) => setScheme(next as ColorScheme)}
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
       >
-        {colorSchemes.map((option) => (
-          <FieldLabel key={option.id} htmlFor={`${mode}-${option.id}`}>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <SchemePreview mode={mode} scheme={option.id} />
-                <FieldTitle>{option.label}</FieldTitle>
-              </FieldContent>
-              <RadioGroupItem value={option.id} id={`${mode}-${option.id}`} />
-            </Field>
-          </FieldLabel>
-        ))}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {colorSchemes.map((option) => (
+            <FieldLabel key={option.id} htmlFor={`${mode}-${option.id}`}>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <SchemePreview mode={mode} scheme={option.id} />
+                  <FieldTitle>{option.label}</FieldTitle>
+                </FieldContent>
+                <RadioGroupItem value={option.id} id={`${mode}-${option.id}`} />
+              </Field>
+            </FieldLabel>
+          ))}
+        </div>
       </RadioGroup>
     </FieldSet>
   );
@@ -119,37 +120,40 @@ export function AppearanceSettings({
               Choose light or dark mode, and the colors each mode uses.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-8">
-            <FieldSet>
-              <FieldLegend>Theme</FieldLegend>
-              <FieldDescription>
-                System follows your device&apos;s light or dark setting.
-              </FieldDescription>
-              <RadioGroup
-                aria-label="Theme"
-                value={hydrated ? (theme ?? "") : ""}
-                onValueChange={setTheme}
-                className="grid gap-3 sm:grid-cols-3"
-              >
-                {themeModes.map((mode) => (
-                  <FieldLabel key={mode.id} htmlFor={`theme-${mode.id}`}>
-                    <Field orientation="horizontal">
-                      <FieldContent>
-                        <FieldTitle>
-                          <mode.icon aria-hidden="true" className="size-4" />
-                          {mode.label}
-                        </FieldTitle>
-                      </FieldContent>
-                      <RadioGroupItem value={mode.id} id={`theme-${mode.id}`} />
-                    </Field>
-                  </FieldLabel>
-                ))}
-              </RadioGroup>
-            </FieldSet>
-            <FieldSeparator />
-            <SchemeChoice mode="light" />
-            <FieldSeparator />
-            <SchemeChoice mode="dark" />
+          <CardContent>
+            <div className="flex flex-col gap-8">
+              <FieldSet>
+                <FieldLegend>Theme</FieldLegend>
+                <FieldDescription>
+                  System follows your device&apos;s light or dark setting.
+                </FieldDescription>
+                <RadioGroup
+                  aria-label="Theme"
+                  value={hydrated ? (theme ?? "") : ""}
+                  onValueChange={setTheme}
+                >
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {themeModes.map((mode) => (
+                      <FieldLabel key={mode.id} htmlFor={`theme-${mode.id}`}>
+                        <Field orientation="horizontal">
+                          <FieldContent>
+                            <FieldTitle>
+                              <mode.icon aria-hidden="true" className="size-4" />
+                              {mode.label}
+                            </FieldTitle>
+                          </FieldContent>
+                          <RadioGroupItem value={mode.id} id={`theme-${mode.id}`} />
+                        </Field>
+                      </FieldLabel>
+                    ))}
+                  </div>
+                </RadioGroup>
+              </FieldSet>
+              <FieldSeparator />
+              <SchemeChoice mode="light" />
+              <FieldSeparator />
+              <SchemeChoice mode="dark" />
+            </div>
           </CardContent>
         </Card>
       </section>

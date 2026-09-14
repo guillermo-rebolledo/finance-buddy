@@ -18,11 +18,12 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       <AppSidebar />
       <SidebarInset>
         <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 md:px-6">
-          <SidebarTrigger className="-ml-1 size-9" />
-          <Separator
-            orientation="vertical"
-            className="mr-1 data-[orientation=vertical]:h-5 md:hidden"
-          />
+          <div className="-ml-1 flex">
+            <SidebarTrigger />
+          </div>
+          <div className="mr-1 flex h-5 md:hidden">
+            <Separator orientation="vertical" />
+          </div>
           <span className="flex items-center gap-2 text-sm font-semibold md:hidden">
             <BookOpen className="size-4 text-primary" aria-hidden="true" />
             Finance Buddy

@@ -11,7 +11,6 @@ import {
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -53,22 +52,24 @@ function Plot({
         {ticks.map((tick) => (
           <span
             key={tick.label + tick.offset}
-            className="absolute right-0 -translate-y-1/2 pr-2 text-right text-[11px] tabular-nums text-muted-foreground"
-            style={{ top: `${tick.offset}%` }}
+            className="absolute top-(--tick-offset) right-0 -translate-y-1/2 pr-2 text-right text-2xs tabular-nums text-muted-foreground"
+            style={{ "--tick-offset": `${tick.offset}%` } as React.CSSProperties}
           >
             {tick.label}
           </span>
         ))}
       </div>
       <div ref={scroller} className="min-w-0 flex-1 overflow-x-auto">
-        <div className="min-w-[28rem]">
+        <div className="min-w-md">
           <div className="relative h-56">
             {ticks.map((tick) => (
               <div
                 key={tick.label + tick.offset}
                 aria-hidden="true"
-                className="absolute inset-x-0 h-px bg-chart-grid"
-                style={{ top: `${tick.offset}%` }}
+                className="absolute inset-x-0 top-(--tick-offset) h-px bg-chart-grid"
+                style={
+                  { "--tick-offset": `${tick.offset}%` } as React.CSSProperties
+                }
               />
             ))}
             <div className="absolute inset-0 flex items-stretch gap-1">
@@ -79,7 +80,7 @@ function Plot({
             {ticksLabel.map((label, index) => (
               <span
                 key={`${label}-${index}`}
-                className="flex-1 truncate text-center text-[11px] tabular-nums text-muted-foreground"
+                className="flex-1 truncate text-center text-2xs tabular-nums text-muted-foreground"
               >
                 {label}
               </span>
@@ -221,12 +222,20 @@ export function IncomeExpenseColumns({ points }: { points: SeriesPoint[] }) {
           >
             <div className="flex w-full items-end justify-center gap-0.5 px-0.5">
               <span
-                className={`${markWidth} rounded-t bg-chart-income ${Number(point.income) > 0 ? "min-h-0.5" : ""}`}
-                style={{ height: `${share(Number(point.income), top)}%` }}
+                className={`${markWidth} h-(--mark-height) rounded-t bg-chart-income ${Number(point.income) > 0 ? "min-h-0.5" : ""}`}
+                style={
+                  {
+                    "--mark-height": `${share(Number(point.income), top)}%`,
+                  } as React.CSSProperties
+                }
               />
               <span
-                className={`${markWidth} rounded-t bg-chart-expenses ${Number(point.expenses) > 0 ? "min-h-0.5" : ""}`}
-                style={{ height: `${share(Number(point.expenses), top)}%` }}
+                className={`${markWidth} h-(--mark-height) rounded-t bg-chart-expenses ${Number(point.expenses) > 0 ? "min-h-0.5" : ""}`}
+                style={
+                  {
+                    "--mark-height": `${share(Number(point.expenses), top)}%`,
+                  } as React.CSSProperties
+                }
               />
             </div>
           </Slot>
@@ -288,25 +297,31 @@ export function NetChangeColumns({ points }: { points: SeriesPoint[] }) {
             >
               <div className="flex w-full flex-col px-0.5">
                 <div
-                  className="flex items-end justify-center"
-                  style={{ height: `${zero}%` }}
+                  className="flex h-(--zone-height) items-end justify-center"
+                  style={{ "--zone-height": `${zero}%` } as React.CSSProperties}
                 >
                   <span
-                    className={`${markWidth} rounded-t bg-chart-gain ${value > 0 ? "min-h-0.5" : ""}`}
-                    style={{
-                      height: `${value > 0 ? share(value, gained) : 0}%`,
-                    }}
+                    className={`${markWidth} h-(--mark-height) rounded-t bg-chart-gain ${value > 0 ? "min-h-0.5" : ""}`}
+                    style={
+                      {
+                        "--mark-height": `${value > 0 ? share(value, gained) : 0}%`,
+                      } as React.CSSProperties
+                    }
                   />
                 </div>
                 <div
-                  className="flex items-start justify-center"
-                  style={{ height: `${100 - zero}%` }}
+                  className="flex h-(--zone-height) items-start justify-center"
+                  style={
+                    { "--zone-height": `${100 - zero}%` } as React.CSSProperties
+                  }
                 >
                   <span
-                    className={`${markWidth} rounded-b bg-chart-loss ${value < 0 ? "min-h-0.5" : ""}`}
-                    style={{
-                      height: `${value < 0 ? share(-value, lost) : 0}%`,
-                    }}
+                    className={`${markWidth} h-(--mark-height) rounded-b bg-chart-loss ${value < 0 ? "min-h-0.5" : ""}`}
+                    style={
+                      {
+                        "--mark-height": `${value < 0 ? share(-value, lost) : 0}%`,
+                      } as React.CSSProperties
+                    }
                   />
                 </div>
               </div>
@@ -350,8 +365,12 @@ export function CategoryBars({
               figure is still stated above and in the table. */}
           <div className="mt-1 h-3 w-full rounded-sm bg-secondary">
             <span
-              className="block h-3 rounded-r bg-chart-income"
-              style={{ width: `${share(Math.max(0, Number(group.amount)), top)}%` }}
+              className="block h-3 w-(--bar-width) rounded-r bg-chart-income"
+              style={
+                {
+                  "--bar-width": `${share(Math.max(0, Number(group.amount)), top)}%`,
+                } as React.CSSProperties
+              }
             />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -375,55 +394,52 @@ export function TableView({
   rows: string[][];
 }) {
   return (
-    <Collapsible className="mt-6">
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="group -ml-3 text-muted-foreground"
-        >
-          <ChevronRight
-            aria-hidden="true"
-            className="transition-transform group-data-[state=open]:rotate-90"
-          />
-          Table view
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <Table className="mt-3">
-          <TableCaption className="sr-only">{caption}</TableCaption>
-          <TableHeader>
-            <TableRow>
-              {headings.map((heading, index) => (
-                <TableHead
-                  key={heading}
-                  scope="col"
-                  className={index ? "text-right" : undefined}
-                >
-                  {heading}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row[0]}>
-                <TableHead scope="row" className="font-normal">
-                  {row[0]}
-                </TableHead>
-                {row.slice(1).map((cell, index) => (
-                  <TableCell
-                    key={`${row[0]}-${index}`}
-                    className="text-right tabular-nums"
-                  >
-                    {cell}
-                  </TableCell>
+    <div className="mt-6">
+      <Collapsible>
+        <div className="-ml-3 text-muted-foreground">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm">
+              <ChevronRight
+                aria-hidden="true"
+                className="transition-transform [[data-state=open]>&]:rotate-90"
+              />
+              Table view
+            </Button>
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent>
+          <div className="mt-3">
+            <Table>
+              <caption className="sr-only">{caption}</caption>
+              <TableHeader>
+                <TableRow>
+                  {headings.map((heading, index) => (
+                    <TableHead key={heading} scope="col">
+                      <div className={index ? "text-right" : undefined}>
+                        {heading}
+                      </div>
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row[0]}>
+                    <TableHead scope="row">
+                      <span className="font-normal">{row[0]}</span>
+                    </TableHead>
+                    {row.slice(1).map((cell, index) => (
+                      <TableCell key={`${row[0]}-${index}`}>
+                        <div className="text-right tabular-nums">{cell}</div>
+                      </TableCell>
+                    ))}
+                  </TableRow>
                 ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CollapsibleContent>
-    </Collapsible>
+              </TableBody>
+            </Table>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   );
 }

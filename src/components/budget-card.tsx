@@ -33,8 +33,10 @@ export function BudgetCard({ summary }: { summary: Summary }) {
           </CardAction>
         </CardHeader>
         {budget && (
-          <CardContent className="flex flex-col gap-4">
-            <BudgetFigures budget={budget} />
+          <CardContent>
+            <div className="flex flex-col gap-4">
+              <BudgetFigures budget={budget} />
+            </div>
           </CardContent>
         )}
       </Card>

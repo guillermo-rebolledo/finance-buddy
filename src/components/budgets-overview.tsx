@@ -130,7 +130,6 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
           list && (
             <Button
               size="lg"
-              className="w-full sm:w-auto"
               disabled={opening}
               onClick={() => openForm("week", list.today)}
             >
@@ -184,8 +183,14 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
                 const detail = periodKindDetails[kind];
                 const budget = list.now[kind];
                 return (
-                  <section key={kind} aria-label={detail.current}>
-                    <Card className="h-full">
+                  // A one-cell grid stretches the card, so the three periods
+                  // stand equally tall side by side.
+                  <section
+                    key={kind}
+                    aria-label={detail.current}
+                    className="grid"
+                  >
+                    <Card>
                       <CardHeader>
                         <CardTitle>
                           <h3>{detail.current}</h3>
@@ -204,19 +209,23 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
                         )}
                       </CardHeader>
                       {budget ? (
-                        <CardContent className="flex flex-col gap-4">
-                          <BudgetFigures budget={budget} />
+                        <CardContent>
+                          <div className="flex flex-col gap-4">
+                            <BudgetFigures budget={budget} />
+                          </div>
                         </CardContent>
                       ) : (
-                        <CardFooter className="mt-auto">
-                          <Button
-                            variant="outline"
-                            disabled={opening}
-                            onClick={() => openForm(kind, list.today)}
-                          >
-                            Set budget
-                          </Button>
-                        </CardFooter>
+                        <div className="mt-auto">
+                          <CardFooter>
+                            <Button
+                              variant="outline"
+                              disabled={opening}
+                              onClick={() => openForm(kind, list.today)}
+                            >
+                              Set budget
+                            </Button>
+                          </CardFooter>
+                        </div>
                       )}
                     </Card>
                   </section>
@@ -225,7 +234,9 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
             </div>
           </section>
         ) : (
-          <Empty className="border">
+          <Card>
+            <CardContent>
+          <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <Wallet aria-hidden="true" />
@@ -247,6 +258,8 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
               </Button>
             </EmptyContent>
           </Empty>
+            </CardContent>
+          </Card>
         ))}
     </main>
   );
@@ -368,7 +381,7 @@ function BudgetForm({
                       value={kind}
                       onValueChange={(next) => choose(next as PeriodKind, date)}
                     >
-                      <SelectTrigger id="budget-kind" className="w-full">
+                      <SelectTrigger id="budget-kind">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent position="popper">
@@ -385,7 +398,6 @@ function BudgetForm({
                     <Input
                       id="budget-date"
                       type="date"
-                      className="tabular-nums"
                       value={date}
                       onChange={(event) => choose(kind, event.target.value)}
                     />

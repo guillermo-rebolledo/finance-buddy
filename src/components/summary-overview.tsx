@@ -16,7 +16,7 @@ import {
   type Summary,
 } from "@/lib/financial";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 import {
   Card,
@@ -269,7 +269,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
         actions={
           <Button
             size="lg"
-            className="w-full sm:w-auto"
             disabled={!summary || loading || saving}
             onClick={() => openForm(null)}
           >
@@ -333,7 +332,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                     <Select name="kind" value={kind} onValueChange={setKind}>
                       <SelectTrigger
                         id="kind"
-                        className="w-full"
                         {...fieldProps("kind")}
                       >
                         <SelectValue placeholder="Choose a type" />
@@ -390,7 +388,6 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                     >
                       <SelectTrigger
                         id="categoryId"
-                        className="w-full"
                         {...fieldProps("categoryId")}
                       >
                         <SelectValue />
@@ -504,7 +501,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <Badge variant="secondary" className="text-sm">
+                        <Badge variant="secondary" size="lg">
                           {entry.category}
                         </Badge>
                         <time
@@ -523,32 +520,33 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                         </p>
                       )}
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          className="-mt-1 -mr-2"
-                          aria-label={`Actions for ${entryTitle(entry)}`}
-                          disabled={loading || saving || deletingId !== ""}
-                        >
-                          <EllipsisIcon />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => openForm(entry)}>
-                          <PencilIcon />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onSelect={() => setRemoving(entry)}
-                        >
-                          <Trash2Icon />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="-mt-1 -mr-2 flex">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Actions for ${entryTitle(entry)}`}
+                            disabled={loading || saving || deletingId !== ""}
+                          >
+                            <EllipsisIcon />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => openForm(entry)}>
+                            <PencilIcon />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={() => setRemoving(entry)}
+                          >
+                            <Trash2Icon />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -593,7 +591,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                 Keep entry
               </AlertDialogCancel>
               <AlertDialogAction
-                className={buttonVariants({ variant: "destructive" })}
+                variant="destructive"
                 disabled={deletingId !== ""}
                 onClick={(event) => {
                   // The dialog closes only once the deletion is confirmed by

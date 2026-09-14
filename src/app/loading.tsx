@@ -6,8 +6,12 @@ export default function Loading() {
       role="status"
       aria-label="Opening workspace"
     >
-      <Skeleton className="h-12 w-2/3" />
-      <Skeleton className="h-64 w-full" />
+      <div className="h-12 w-2/3">
+        <Skeleton />
+      </div>
+      <div className="h-64 w-full">
+        <Skeleton />
+      </div>
     </main>
   );
 }
