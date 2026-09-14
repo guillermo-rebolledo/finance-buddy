@@ -19,6 +19,6 @@ Each one needs something the journal deliberately lacks. The journal records act
 ## Consequences
 
 - **Lending and borrowing.** Money lent or borrowed gets no dedicated kind. Whether and how the owner records it stays their choice under the current definitions of income and expense. Repaying a credit card remains an unrecorded transfer.
-- **Forward-looking views.** These stay about spending, not balances. The trend compares recorded periods, and the separately specified pace-of-spending indicator compares spending with elapsed time; neither projects a balance. Budgets (ADR 0009) are the recommended way to plan spending.
+- **Forward-looking views.** These stay about spending, not balances. The trend compares recorded periods, and the separately specified pace-of-spending indicator compares spending with elapsed time; neither projects a balance. Budgets, recorded on main as "Budget total expenses per period, repeating by default with one-off overrides", are the recommended way to plan spending.
 - **Recurring or planned entries.** If adopted, they remain a capture convenience. A planned entry stays out of totals until confirmed and does not become a forecast.
 - **Unaffected.** Totals, refund arithmetic, archived categories, export snapshots, owner-only access and idempotent entry ids do not change.
