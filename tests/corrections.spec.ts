@@ -306,7 +306,7 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
   await entryAction(page, "Delete", "Refund of MXN 50.00 on 2026-09-06");
   const dialog = page.getByRole("alertdialog");
   await expect(
-    dialog.getByRole("heading", { name: "Delete this entry permanently?" }),
+    dialog.getByRole("heading", { name: "Delete this entry?" }),
   ).toBeVisible();
   await expect(dialog).toContainText("Refund of MXN 50.00 on 2026-09-06");
   await expect(dialog).toContainText("Groceries");
@@ -346,7 +346,7 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
     .getByRole("button", { name: "Delete permanently" })
     .click();
   await expect(
-    page.getByText("No entries in this period", { exact: true }),
+    page.getByText("Nothing here yet", { exact: true }),
   ).toBeVisible();
   for (const query of [
     "?kind=day&date=2026-09-02",
@@ -376,7 +376,7 @@ test("deletion is confirmed, permanent, and reflected in every period", async ({
     .getByRole("button", { name: "Delete permanently" })
     .click();
   await expect(
-    notification(page, "The deletion could not be confirmed"),
+    notification(page, "We couldn't confirm that this entry was deleted"),
   ).toBeVisible();
   await expect(page.getByRole("alertdialog")).toBeVisible();
   await page.unroute("**/api/journal");
@@ -576,7 +576,7 @@ test("an unconfirmed correction keeps the form and is retried safely", async ({
   });
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   // No success is claimed, the values stay on screen, and the form stays open.
-  await expect(notification(page, "Retry this same entry safely")).toBeVisible();
+  await expect(notification(page, "It's safe to retry with the same values.")).toBeVisible();
   await expect(notification(page, "Entry updated")).toHaveCount(0);
   await expect(page.getByLabel("Amount (MXN)")).toHaveValue("45.50");
   await expect(page.getByLabel("Amount (MXN)")).toBeDisabled();

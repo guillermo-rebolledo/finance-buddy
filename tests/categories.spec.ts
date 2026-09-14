@@ -127,7 +127,7 @@ test("names are bounded and duplicates are refused consistently", async ({
   await page.getByLabel("New expense category").fill("   ");
   await page.getByRole("button", { name: "Add expense category" }).click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Change needs attention" }),
+    page.getByRole("alert").filter({ hasText: "We couldn't save that change" }),
   ).toContainText("1 to 40 characters");
   expect(await lists(page).then((l) => l.expense)).toHaveLength(8);
   // Only the field the change came from is marked, and the other list's field is
@@ -452,7 +452,7 @@ test("the page reports a failed load and phone layout stays within the viewport"
   try {
     await page.reload();
     await expect(
-      page.getByRole("alert").filter({ hasText: "Categories unavailable" }),
+      page.getByRole("alert").filter({ hasText: "We couldn't load your categories" }),
     ).toBeVisible();
     await expectRefusal(
       await page.request.get("/api/categories"),

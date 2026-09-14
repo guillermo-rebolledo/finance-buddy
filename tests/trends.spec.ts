@@ -213,7 +213,7 @@ test("the dashboard charts the selected period's trend and the registry keeps on
   await expect(totals.getByText("MXN 200.00", { exact: true })).toBeVisible();
   const charts = page.getByRole("region", { name: "Trends" });
   await expect(
-    charts.getByRole("heading", { name: "The last 12 months" }),
+    charts.getByRole("heading", { name: "Past 12 months" }),
   ).toBeVisible();
   await expect(charts).toContainText("2025-10-01 – 2026-09-30");
   // Every mark names its own period and its own figures, so a value is never
@@ -234,7 +234,7 @@ test("the dashboard charts the selected period's trend and the registry keeps on
     }),
   ).toBeVisible();
   await expect(charts).toContainText("Groceries");
-  await expect(charts).toContainText("MXN 70.00 in the 12 months before.");
+  await expect(charts).toContainText("The previous 12 months came to MXN 0.00 and MXN 70.00.");
   // Kept as a test artifact so the charts can be looked at.
   await page.screenshot({
     path: testInfo.outputPath("dashboard.png"),
@@ -246,7 +246,7 @@ test("the dashboard charts the selected period's trend and the registry keeps on
     page.getByRole("heading", { name: "May 2022", level: 1 }),
   ).toBeVisible();
   await expect(
-    charts.getByText("Nothing recorded in these 12 months"),
+    charts.getByText("No activity in the past 12 months"),
   ).toBeVisible();
   // Neither viewport is pushed sideways by a chart wider than its card.
   expect(
