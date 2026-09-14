@@ -74,6 +74,27 @@ How total income, total expenses, and net change moved across consecutive summar
 **Trend span**:
 The consecutive summary periods a trend covers, ending with the selected summary period: fourteen days, twelve weeks, or twelve months. Each trend is presented beside the equally long span immediately before it, so a figure reads as rising or falling rather than as a bare amount.
 
+**Budget**:
+The most a person intends to spend during a summary period, measured against that period's total expenses, so refunds give room back and income never adds to it. A budget is either a repeating budget or a one-off budget. Days, weeks, and months are budgeted independently, even when they overlap.
+_Avoid_: Spending limit
+
+**Repeating budget**:
+A budget that applies to every summary period of one kind, starting with the period it was set for, until it is changed or stopped. This is the default kind of budget.
+_Avoid_: Recurring budget (recurring describes financial movements)
+
+**One-off budget**:
+A budget that applies only to the single summary period it was set for, such as the week of 14 September, and never repeats.
+
+**Remaining budget**:
+A budget minus its period's total expenses. It can exceed the budget when refunds received outweigh expenses, and nothing left over carries into another period.
+
+**Over budget**:
+The state of a budget whose period's total expenses exceed it, described by the amount of the excess rather than a negative remaining budget.
+
+**Left per day**:
+For the current week or month, the remaining budget divided by the days left in the period, counting today. It describes what remains available, not what should already have been spent, and is not a forecast.
+_Avoid_: Daily allowance, safe to spend
+
 **Financial report**:
 A human-readable presentation of recorded income, expenses, and their summaries, intended for reading, printing, or sharing.
 
