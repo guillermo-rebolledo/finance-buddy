@@ -808,7 +808,7 @@ test("Budgets sits between Dashboard and Categories in the navigation and explai
   else await expect(link).toHaveAttribute("aria-current", "page");
 
   await expect(page.getByText("No budgets yet", { exact: true })).toBeVisible();
-  await expect(page.getByText(/most you intend to spend/)).toBeVisible();
+  await expect(page.getByText(/most you want to spend/)).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Now", exact: true }),
   ).toHaveCount(0);
@@ -934,7 +934,7 @@ test("the dashboard shows the selected period's budget read-only and follows the
     page.getByRole("heading", { name: "This week", level: 1 }),
   ).toBeVisible();
   const card = page.getByRole("region", { name: "Budget", exact: true });
-  await expect(card).toContainText("No budget for this week.");
+  await expect(card).toContainText("You haven't set a budget for this week.");
   await expect(card.getByRole("link", { name: "Budgets" })).toHaveAttribute(
     "href",
     "/budgets",
@@ -961,16 +961,16 @@ test("the dashboard shows the selected period's budget read-only and follows the
   });
 
   // The card describes whichever period is on screen.
-  await page.getByRole("button", { name: "Previous", exact: true }).click();
+  await page.getByRole("button", { name: "Previous period", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Aug 31, 2026 – Sep 6, 2026", level: 1 }),
   ).toBeVisible();
-  await expect(card).toContainText("No budget for this week.");
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(card).toContainText("You haven't set a budget for this week.");
+  await page.getByRole("button", { name: "Next period", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "This week", level: 1 }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Next period", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Sep 14, 2026 – Sep 20, 2026", level: 1 }),
   ).toBeVisible();
@@ -983,7 +983,7 @@ test("the dashboard shows the selected period's budget read-only and follows the
   await expect(
     page.getByRole("heading", { name: "This month", level: 1 }),
   ).toBeVisible();
-  await expect(card).toContainText("No budget for this month.");
+  await expect(card).toContainText("You haven't set a budget for this month.");
 
   // Overspending reads as the excess, not a negative amount left.
   await record(page, { date: "2026-09-09", amount: "600" });
@@ -1264,7 +1264,7 @@ test("the Repeating section changes a repeating budget from its row and stops it
   await stop.click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText(
-    "No week budget repeats from this week on, and every change scheduled after it goes too.",
+    "Your repeating week budget will end this week. We'll also remove any changes scheduled after that. Past and one-off budgets won't change.",
   );
   await page.screenshot({
     path: testInfo.outputPath("budgets-stop-confirm.png"),
@@ -1584,7 +1584,7 @@ test("a one-off budget set from the form is listed under Upcoming one-offs, and 
   await expect(amount).toHaveValue("2000.00");
   await oneOff.click();
   await amount.fill("5000");
-  await expect(form).toContainText("applies to this period only");
+  await expect(form).toContainText("Use this budget for the selected period only.");
   await page.screenshot({
     path: testInfo.outputPath("budgets-form-one-off.png"),
     fullPage: true,
@@ -1619,7 +1619,7 @@ test("a one-off budget set from the form is listed under Upcoming one-offs, and 
   await expect(
     notification(
       page,
-      "One-off budget removed. The repeating budget of MXN 2,000.00 applies again.",
+      "One-off budget removed. Your MXN 2,000.00 repeating budget is back in place.",
     ),
   ).toBeVisible();
   await expect(upcoming).toHaveCount(0);
@@ -1632,13 +1632,13 @@ test("a one-off budget set from the form is listed under Upcoming one-offs, and 
   ).toBeVisible();
   const card = page.getByRole("region", { name: "Budget", exact: true });
   await expect(card).toContainText("Repeating budget.");
-  await page.getByRole("button", { name: "Previous", exact: true }).click();
+  await page.getByRole("button", { name: "Previous period", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Aug 31, 2026 – Sep 6, 2026", level: 1 }),
   ).toBeVisible();
   await expect(card).toContainText("Repeating budget. It ended over budget.");
   await expect(card.getByText("Over by MXN 300.00", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Previous", exact: true }).click();
+  await page.getByRole("button", { name: "Previous period", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Aug 24, 2026 – Aug 30, 2026", level: 1 }),
   ).toBeVisible();

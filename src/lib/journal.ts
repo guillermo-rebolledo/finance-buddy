@@ -166,7 +166,7 @@ export async function saveEntry(
         : {
             field: "id",
             message:
-              "This entry identifier was already saved with different values. Refresh to review it.",
+              "This entry was already saved with different details. Refresh to review it.",
           };
     }
     if (entry.categoryId) {

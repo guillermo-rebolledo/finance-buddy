@@ -50,8 +50,8 @@ export function SessionSettings() {
             <h2>Sessions</h2>
           </CardTitle>
           <CardDescription>
-            Sign out of Finance Buddy on every device at once, including this
-            browser and the iOS app. Use it if a phone is lost or stolen.
+            End every Finance Buddy session at once, including this browser and
+            the iOS app. Handy if your phone goes missing.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -69,9 +69,9 @@ export function SessionSettings() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Sign out everywhere?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Every session ends, including this browser and any phone
-                    signed in to Finance Buddy. Each device has to sign in again.
-                    Your journal is unchanged.
+                    We&apos;ll sign out this browser and every phone using Finance
+                    Buddy. You&apos;ll need to sign in again on each device. Your
+                    journal stays exactly as it is.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -95,7 +95,7 @@ export function SessionSettings() {
             {failed && (
               <Alert variant="destructive">
                 <AlertDescription>
-                  Signing out everywhere could not be confirmed. Please try again.
+                  We couldn&apos;t sign out your other sessions. Try again.
                 </AlertDescription>
               </Alert>
             )}

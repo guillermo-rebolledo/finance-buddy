@@ -66,7 +66,7 @@ for (const identity of ["unverified"]) {
     context,
   }) => {
     await signIn(page, identity);
-    await expect(page.getByText("Sign-in was not completed")).toBeVisible();
+    await expect(page.getByText("That sign-in didn't work")).toBeVisible();
     await expect(page).toHaveURL(/error=(access_denied|email_not_verified)/);
     expect((await context.request.get("/api/private")).status()).toBe(401);
     const session = await context.request.get("/api/auth/get-session");
@@ -153,7 +153,10 @@ test("a Google provider failure shows retry feedback without a session", async (
   context,
 }) => {
   await signIn(page, "provider-failure");
-  await expect(page.getByText("Sign-in was not completed")).toBeVisible();
+  await expect(page.getByText("That sign-in didn't work")).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "That sign-in" })).toContainText(
+    "Try signing in again.",
+  );
   await expect(
     page.getByRole("button", { name: "Continue with Google" }),
   ).toBeEnabled();
@@ -185,7 +188,7 @@ test("missing auth secret fails closed in an ordinary production server", async 
   request,
 }) => {
   await page.goto("http://127.0.0.1:3101/login");
-  await expect(page.getByText("Setup is not complete")).toBeVisible();
+  await expect(page.getByText("Sign-in isn't ready yet")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Continue with Google" }),
   ).toBeDisabled();

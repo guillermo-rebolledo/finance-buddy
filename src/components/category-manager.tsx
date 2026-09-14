@@ -114,7 +114,7 @@ export function CategoryManager({
             field: result.field ?? null,
             message:
               result.error ||
-              "The change could not be confirmed. Please retry it.",
+              "We couldn't confirm that change. Try it again.",
           },
           key,
         );
@@ -132,7 +132,7 @@ export function CategoryManager({
         document.getElementById("category-status")?.focus(),
       );
     } catch {
-      setError("The change could not be confirmed. Please retry it.");
+      setError("We couldn't confirm that change. Try it again.");
     } finally {
       setPending("");
     }
@@ -159,9 +159,8 @@ export function CategoryManager({
     <main aria-busy={busy} className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10">
       <PageHeader title="Categories">
         <p className="max-w-2xl">
-          Add, rename, and archive the categories your entries choose from.
-          Archiving is not deletion: past entries, totals, and breakdowns keep
-          the category exactly as recorded.
+          Make categories fit the way you think about money. Archive one when
+          you no longer use it; your old entries and totals will still keep it.
         </p>
       </PageHeader>
       {success && (
@@ -171,15 +170,15 @@ export function CategoryManager({
       )}
       {error && (
         <Alert variant="destructive" id="category-error" tabIndex={-1}>
-          <AlertTitle>Change needs attention</AlertTitle>
+          <AlertTitle>We couldn&apos;t save that change</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
       {loadError && (
         <Alert variant="destructive">
-          <AlertTitle>Categories unavailable</AlertTitle>
+          <AlertTitle>We couldn&apos;t load your categories</AlertTitle>
           <AlertDescription>
-            We could not load your categories.
+            Your lists aren&apos;t available right now.
             <Button variant="outline" disabled={loading} onClick={load}>
               {loading ? "Loading…" : "Retry categories"}
             </Button>
@@ -294,8 +293,8 @@ export function CategoryManager({
                             No active {detail.label.toLowerCase()} categories
                           </EmptyTitle>
                           <EmptyDescription>
-                            Add one below, or restore an archived category.
-                            Entries can always stay uncategorized.
+                            Add one below or bring back an archived category.
+                            You can always leave an entry uncategorized.
                           </EmptyDescription>
                         </EmptyHeader>
                       </Empty>
@@ -347,8 +346,8 @@ export function CategoryManager({
                 <h2>Archived</h2>
               </CardTitle>
               <CardDescription>
-                Unavailable for new entries, still shown on every entry and
-                total that already uses them. Restore one to choose it again.
+                These stay on older entries and totals, but you can&apos;t use them
+                for new entries. Restore one to put it back in the list.
               </CardDescription>
             </CardHeader>
             <CardContent>

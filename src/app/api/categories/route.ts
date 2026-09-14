@@ -25,11 +25,11 @@ async function handle(request: Request, write: boolean) {
     return write
       ? jsonError(
           "not_confirmed",
-          "The change could not be confirmed. Please retry it.",
+          "We couldn't confirm that change. Try it again.",
         )
       : jsonError(
           "unavailable",
-          "Could not load your categories. Please retry.",
+          "We couldn't load your categories. Try again.",
         );
   }
 }

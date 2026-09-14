@@ -165,9 +165,9 @@ test("an empty period exports zero totals and invents no rows", async ({
   expect(snapshot.text).toContain("Total income MXN 0.00");
   expect(snapshot.text).toContain("Total expenses (after refunds) MXN 0.00");
   expect(snapshot.text).toContain("Net change MXN 0.00");
-  expect(snapshot.text).toContain("No expenses or refunds in this period.");
+  expect(snapshot.text).toContain("No spending or refunds in this period.");
   expect(snapshot.text).toContain("Financial movements (0)");
-  expect(snapshot.text).toContain("No financial movements in this period.");
+  expect(snapshot.text).toContain("No entries for this period.");
 });
 
 test("refunds, uncategorized groups and archived categories survive into the snapshot", async ({
@@ -350,9 +350,9 @@ test("a failed export reports an actionable retry and changes nothing", async ({
   await page.getByRole("button", { name: "Export PDF" }).click();
   const alert = page
     .getByRole("alert")
-    .filter({ hasText: "Export needs attention" });
+    .filter({ hasText: "We couldn't finish the export" });
   await expect(alert).toContainText(
-    "The PDF could not be created, and your journal is unchanged. Retry the export.",
+    "We couldn't create the PDF. Your journal hasn't changed, so you can try the export again.",
   );
   expect((await report(page)).entries).toHaveLength(1);
   // A refusal reports what the server said rather than a failed rendering.

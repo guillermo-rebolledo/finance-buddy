@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       headers: privateHeaders,
     });
   } catch {
-    return jsonError("unavailable", "Could not load this period. Please retry.");
+    return jsonError("unavailable", "We couldn't load this period. Try again.");
   }
 }
 // Recording, correcting and deleting share the same session, request integrity,
@@ -73,7 +73,7 @@ async function budgetReply(owner: string, input: unknown) {
 export function POST(request: Request) {
   return change(
     request,
-    "Save could not be confirmed. Retry this entry safely.",
+    "We didn't get confirmation that this entry was saved. Retry the same entry to avoid a duplicate.",
     async (owner, input, today) =>
       validateEntry(input, today) ??
       (await saveEntry(owner, input as EntryInput)),
@@ -83,7 +83,7 @@ export function POST(request: Request) {
 export function PATCH(request: Request) {
   return change(
     request,
-    "The correction could not be confirmed. Retry it safely.",
+    "We didn't get confirmation that your changes were saved. It's safe to retry with the same values.",
     async (owner, input, today) =>
       validateEntry(input, today) ??
       (await editEntry(owner, input as EntryInput)),
@@ -93,7 +93,7 @@ export function PATCH(request: Request) {
 export function DELETE(request: Request) {
   return change(
     request,
-    "The deletion could not be confirmed. Retry it safely.",
+    "We couldn't confirm that this entry was deleted. Try deleting it again.",
     async (owner, input) =>
       validateEntryTarget(input) ??
       (await deleteEntry(owner, (input as EntryInput).id)),

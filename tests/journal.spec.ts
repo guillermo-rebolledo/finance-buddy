@@ -83,7 +83,7 @@ test("phone and desktop save optional fields, preserve invalid input, and recove
 }, testInfo) => {
   await overview(page);
   await expect(
-    page.getByText("No entries in this period", { exact: true }),
+    page.getByText("Nothing here yet", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await expect(page.getByLabel("Movement date", { exact: true })).toHaveValue(
@@ -532,10 +532,10 @@ test("failed report loads show an error and retry instead of an empty period", a
   try {
     await page.reload();
     await expect(
-      page.getByRole("alert").filter({ hasText: "Period unavailable" }),
+      page.getByRole("alert").filter({ hasText: "We couldn't load that period" }),
     ).toBeVisible();
     await expect(
-      page.getByText("No entries in this period", { exact: true }),
+      page.getByText("Nothing here yet", { exact: true }),
     ).toHaveCount(0);
     await expectRefusal(
       await page.request.get("/api/journal"),
@@ -549,9 +549,9 @@ test("failed report loads show an error and retry instead of an empty period", a
       "ALTER TABLE unavailable_financial_movement RENAME TO financial_movement",
     );
   }
-  await page.getByRole("button", { name: "Retry period" }).click();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(
-    page.getByText("No entries in this period", { exact: true }),
+    page.getByText("Nothing here yet", { exact: true }),
   ).toBeVisible();
 });
 

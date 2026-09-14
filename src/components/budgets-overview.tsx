@@ -69,7 +69,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const unconfirmed = "The budget could not be confirmed. Retry it safely.";
+const unconfirmed =
+  "We didn't get confirmation that your budget was saved. It's safe to try again.";
 
 // The period a budget form names, as the server resolved it: its kind, the
 // date chosen, its first and last day, today, and the budget that applies.
@@ -114,7 +115,7 @@ async function removeOneOff(kind: PeriodKind, date: string) {
   if (applies === undefined) return false;
   toast.success(
     applies
-      ? `One-off budget removed. The repeating budget of ${money(applies.amount)} applies again.`
+      ? `One-off budget removed. Your ${money(applies.amount)} repeating budget is back in place.`
       : "One-off budget removed.",
   );
   return true;
@@ -169,7 +170,7 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
           },
       );
     } catch {
-      toast.error("Could not load more past budgets. Please retry.");
+      toast.error("We couldn't load more past budgets. Try again.");
     } finally {
       setLoadingMore(false);
     }
@@ -184,7 +185,7 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
         document.getElementById("budget-amount")?.focus(),
       );
     } catch {
-      toast.error("Could not open the budget form. Please retry.");
+      toast.error("We couldn't open the budget form. Try again.");
     } finally {
       setOpening(false);
     }
@@ -223,15 +224,16 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
         }
       >
         <p className="max-w-2xl">
-          Plan your spending for a day, week, or month and see how much is left.
+          Set a spending target for a day, week, or month. We&apos;ll keep track of
+          what&apos;s left.
         </p>
         <p>Mexico City · MXN</p>
       </PageHeader>
       {loadError && (
         <Alert variant="destructive">
-          <AlertTitle>Budgets unavailable</AlertTitle>
+          <AlertTitle>We couldn&apos;t load your budgets</AlertTitle>
           <AlertDescription>
-            We could not load your budgets.
+            Your budgets aren&apos;t available right now.
             <Button variant="outline" disabled={loading} onClick={load}>
               {loading ? "Loading…" : "Retry budgets"}
             </Button>
@@ -253,7 +255,7 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
               <SectionHeading
                 id="now-heading"
                 title="Now"
-                note="Today, this week, and this month in Mexico City."
+                note="A quick look at today, this week, and this month."
               />
               <div className="grid gap-4 lg:grid-cols-3">
                 {periodKinds.map((kind) => {
@@ -343,11 +345,10 @@ export function BudgetsOverview({ initial }: { initial: BudgetList | null }) {
                   </EmptyMedia>
                   <EmptyTitle>No budgets yet</EmptyTitle>
                   <EmptyDescription>
-                    A budget is the most you intend to spend in a day, week, or
-                    month. It is measured against that period&apos;s total
-                    expenses, so refunds give room back and income never adds to
-                    it. It repeats every period until you change it, unless you
-                    set it for one period only.
+                    Pick the most you want to spend in a day, week, or month.
+                    Refunds give you room back, while income stays out of the
+                    calculation. Your budget repeats unless you make it a
+                    one-off.
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
@@ -434,7 +435,7 @@ function RepeatingBudgets({
     <section aria-label="Repeating" className="flex flex-col gap-4">
       <SectionHeading
         title="Repeating"
-        note="Budgets that apply to every period of their kind, with the changes scheduled ahead."
+        note="These keep going until you change or stop them. Future changes show here too."
       />
       <Card>
         <CardContent>
@@ -489,9 +490,9 @@ function RepeatingBudgets({
                 Stop the repeating {noun} budget?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                No {noun} budget repeats from {fromText(stopping)} on, and
-                every change scheduled after it goes too. Ended {noun}s keep
-                the budgets they had, and one-off budgets stay.
+                Your repeating {noun} budget will end {fromText(stopping)}.
+                We&apos;ll also remove any changes scheduled after that. Past and
+                one-off budgets won&apos;t change.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -542,7 +543,7 @@ function UpcomingBudgets({
     <section aria-label="Upcoming one-offs" className="flex flex-col gap-4">
       <SectionHeading
         title="Upcoming one-offs"
-        note="Budgets set for a single future period, in place of any repeating budget."
+        note="A different budget for one future day, week, or month."
       />
       <Card>
         <CardContent>
@@ -608,7 +609,7 @@ function PastBudgets({
     <section aria-label="Past" className="flex flex-col gap-4">
       <SectionHeading
         title="Past"
-        note="Ended periods that had a budget, newest first."
+        note="Finished periods, newest first."
       />
       <Card>
         <CardContent>
@@ -775,8 +776,8 @@ function BudgetForm({
           </CardTitle>
           <CardDescription>
             {oneOff
-              ? "The budget applies to this period only, in place of any repeating budget."
-              : "The budget applies to the period you choose and every one after it, until you change it."}
+              ? "Use this budget for the selected period only. It replaces any repeating budget for that period."
+              : "Start with the selected period and keep using this budget until you change it."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -827,7 +828,7 @@ function BudgetForm({
                   </p>
                   {resolveError && (
                     <p className="text-sm text-destructive">
-                      Could not check that period. Choose it again to retry.
+                      We couldn&apos;t check that period. Choose it again to retry.
                     </p>
                   )}
                 </div>
@@ -835,8 +836,8 @@ function BudgetForm({
                   <Alert>
                     <AlertTitle>This {noun} has ended</AlertTitle>
                     <AlertDescription>
-                      Its budget stays as it was. Choose today or a later date
-                      to set a budget.
+                      Its budget is locked in. Choose today or a later date to
+                      set a new one.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -857,8 +858,8 @@ function BudgetForm({
                     <FieldError id="budget-amount-error">{invalid}</FieldError>
                   ) : (
                     <FieldDescription>
-                      The most you intend to spend. Zero plans a {noun} with no
-                      spending.
+                      The most you want to spend. Enter 0 if you don&apos;t plan to
+                      spend anything this {noun}.
                     </FieldDescription>
                   )}
                 </Field>

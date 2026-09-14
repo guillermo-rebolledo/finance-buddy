@@ -19,6 +19,6 @@ export async function GET(request: Request) {
       headers: privateHeaders,
     });
   } catch {
-    return jsonError("unavailable", "Could not load these trends. Please retry.");
+    return jsonError("unavailable", "We couldn't load your trends. Try again.");
   }
 }

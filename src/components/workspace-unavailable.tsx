@@ -5,9 +5,9 @@ export function WorkspaceUnavailable() {
   return (
     <main className="mx-auto max-w-lg px-6 py-24">
       <Alert>
-        <AlertTitle>Workspace temporarily unavailable</AlertTitle>
+        <AlertTitle>Your journal isn&apos;t available right now</AlertTitle>
         <AlertDescription>
-          We could not open your workspace. Please try again shortly.
+          We couldn&apos;t open it this time. Give it another try in a moment.
         </AlertDescription>
       </Alert>
     </main>

@@ -132,13 +132,13 @@ test("the owner authorizes export and the spreadsheet holds the summary's own fi
   // signed in is not enough on its own.
   await page.getByRole("button", { name: "Export to Google Sheets" }).click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Export needs attention" }),
-  ).toContainText("not connected");
+    page.getByRole("alert").filter({ hasText: "We couldn't finish the export" }),
+  ).toContainText("isn't connected");
   expect(await createdSpreadsheets()).toHaveLength(0);
   // Refusing so far changed nothing about ordinary use.
   expect((await report(page)).entries).toHaveLength(4);
   await connectSheets(page);
-  await expect(page.getByRole("status").filter({ hasText: "Google Sheets export is connected" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Google Sheets is connected" })).toBeVisible();
   await exportThroughForm(page);
   const link = page.getByRole("link", { name: /^Open Finance Buddy:/ });
   await expect(link).toBeVisible();
@@ -155,13 +155,13 @@ test("the owner authorizes export and the spreadsheet holds the summary's own fi
   expect(spreadsheet.request.properties.title).toContain("exported 2026-09-11");
   expect(spreadsheet.request.properties.title).toContain("Sep 7, 2026 – Sep 13, 2026");
   const summaryTab = tabRows(spreadsheet, "Summary");
-  expect(summaryValue(summaryTab, "Covered from")).toEqual({
+  expect(summaryValue(summaryTab, "Start date")).toEqual({
     stringValue: "2026-09-07",
   });
-  expect(summaryValue(summaryTab, "Covered to")).toEqual({
+  expect(summaryValue(summaryTab, "End date")).toEqual({
     stringValue: "2026-09-13",
   });
-  expect(summaryValue(summaryTab, "Generated (Mexico City)")).toEqual({
+  expect(summaryValue(summaryTab, "Exported (Mexico City)")).toEqual({
     stringValue: "2026-09-11",
   });
   expect(summaryValue(summaryTab, "Currency")).toEqual({ stringValue: "MXN" });
@@ -251,7 +251,7 @@ test("declining export authorization leaves sign-in and the journal working", as
   await page.reload();
   await page.getByRole("button", { name: "Export to Google Sheets" }).click();
   await connectSheets(page, { deny: true });
-  await expect(page.getByText("Google Sheets export was not authorized")).toBeVisible();
+  await expect(page.getByText("Google Sheets wasn't connected")).toBeVisible();
   // The session and every operation unrelated to Sheets are untouched.
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   expect((await report(page)).expenses).toBe("12.00");
@@ -342,7 +342,7 @@ test("provider failures report actionably, keep the journal intact, and never du
   const refused = await exportRequest(page, { id });
   await expectRefusal(refused, "not_confirmed", 503);
   expect(await refused.json()).toMatchObject({
-    error: expect.stringContaining("Retry this same export"),
+    error: expect.stringContaining("Try the same export again"),
   });
   expect(await createdSpreadsheets()).toHaveLength(0);
   await googleAnswers();
@@ -388,7 +388,7 @@ test("provider failures report actionably, keep the journal intact, and never du
   const repeated = await exportRequest(page, { id: lost });
   await expectRefusal(repeated, "export_unconfirmed", 409);
   expect(await repeated.json()).toMatchObject({
-    error: expect.stringContaining("Check your Google Drive"),
+    error: expect.stringContaining("Check Google Drive first"),
   });
   expect(await createdSpreadsheets()).toHaveLength(1);
   // A deliberate new export still works and the records never changed.
@@ -510,10 +510,10 @@ test("an empty period exports a zero-total snapshot, and a long one exports ever
   expect(summaryValue(emptySummary, "Entries")).toEqual({ numberValue: 0 });
   // Nothing is invented to fill the gap.
   expect(tabRows(empty, "Entries").slice(1)).toEqual([
-    [{ stringValue: "No entries in this period." }],
+    [{ stringValue: "No entries for this period." }],
   ]);
   expect(tabRows(empty, "Categories").slice(1)).toEqual([
-    [{ stringValue: "No expenses or refunds in this period." }],
+    [{ stringValue: "No spending or refunds in this period." }],
   ]);
 
   // A long period: every day of a past month, all of it in the snapshot.
@@ -597,6 +597,6 @@ async function connectExport(page: Page) {
   // Next's streamed response can briefly retain a second copy in a hidden
   // fragment. Role locators assert the exposed status, excluding that copy.
   await expect(
-    page.getByRole("status").filter({ hasText: "Google Sheets export is connected" }),
+    page.getByRole("status").filter({ hasText: "Google Sheets is connected" }),
   ).toBeVisible();
 }

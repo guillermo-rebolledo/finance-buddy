@@ -47,7 +47,7 @@ function Total({ label, value, emphasis = false }: {
 export function FinancialReport({ summary }: { summary: Summary }) {
   const label = periodLabel(summary.kind, summary);
   return (
-    <Document title={`Finance Buddy — ${label}`} author="Finance Buddy" lang="en" tagged
+    <Document title={`Finance Buddy: ${label}`} author="Finance Buddy" lang="en" tagged
       style={{ ...theme.typography.body, color: theme.colors.foreground }}>
       <Page size="A4" margin={{
         top: theme.spacing.page.marginTop,
@@ -89,7 +89,7 @@ export function FinancialReport({ summary }: { summary: Summary }) {
             ]}
             data={summary.breakdown.map((group) => ({ category: group.category, amount: money(group.amount) }))}
           />
-        ) : <Text color="mutedForeground">No expenses or refunds in this period.</Text>}
+        ) : <Text color="mutedForeground">No spending or refunds in this period.</Text>}
 
         <Heading level={2}>{`Financial movements (${summary.entries.length})`}</Heading>
         {summary.entries.length ? (
@@ -110,7 +110,7 @@ export function FinancialReport({ summary }: { summary: Summary }) {
               note,
             })))}
           />
-        ) : <Text color="mutedForeground">No financial movements in this period.</Text>}
+        ) : <Text color="mutedForeground">No entries for this period.</Text>}
       </Page>
     </Document>
   );

@@ -228,14 +228,14 @@ test("period navigation moves one period at a time and returns to the current on
   await expect(heading).toHaveText("This month");
   await expect(page.getByText("2026-09-01 – 2026-09-30")).toBeVisible();
   // Previous steps back exactly one month and shows that month's figures.
-  await page.getByRole("button", { name: "Previous", exact: true }).click();
+  await page.getByRole("button", { name: "Previous period", exact: true }).click();
   await expect(heading).toHaveText("August 2026");
   await expect(page.getByText("2026-08-01 – 2026-08-31")).toBeVisible();
   await expect(page.getByText("MXN 25.00").first()).toBeVisible();
   // A month ending on the 31st steps to a shorter February, leap year included.
   await page.getByLabel("Jump to date").fill("2024-01-31");
   await expect(heading).toHaveText("January 2024");
-  await page.getByRole("button", { name: "Next", exact: true }).focus();
+  await page.getByRole("button", { name: "Next period", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(heading).toHaveText("February 2024");
   await expect(page.getByText("2024-02-01 – 2024-02-29")).toBeVisible();
@@ -246,21 +246,21 @@ test("period navigation moves one period at a time and returns to the current on
   await expect(heading).toHaveText("Thursday, February 1, 2024");
   await expect(page.getByText("2024-02-01 – 2024-02-01")).toBeVisible();
   await expect(
-    page.getByText("No entries in this period", { exact: true }),
+    page.getByText("Nothing here yet", { exact: true }),
   ).toBeVisible();
   // A week crossing New Year steps back across the year boundary.
   await choose(page, "Period", "Week");
   await page.getByLabel("Jump to date").fill("2026-01-01");
   await expect(heading).toHaveText("Dec 29, 2025 – Jan 4, 2026");
   await expect(page.getByText("MXN 100.00", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Previous", exact: true }).click();
+  await page.getByRole("button", { name: "Previous period", exact: true }).click();
   await expect(heading).toHaveText("Dec 22, 2025 – Dec 28, 2025");
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Next period", exact: true }).click();
   await expect(heading).toHaveText("Dec 29, 2025 – Jan 4, 2026");
   // Back to current period recalculates today, across a Mexico City midnight.
   await moveClockTo("2026-09-02T06:01:00Z");
   await page
-    .getByRole("button", { name: "Back to current period", exact: true })
+    .getByRole("button", { name: "Go to current period", exact: true })
     .click();
   await expect(heading).toHaveText("This week");
   await expect(page.getByText("2026-08-31 – 2026-09-06")).toBeVisible();
@@ -281,7 +281,7 @@ test("the browser time zone never decides which period is current", async ({
   await atMidday(page);
   await moveClockTo("2026-09-02T05:00:00Z");
   await page
-    .getByRole("button", { name: "Back to current period", exact: true })
+    .getByRole("button", { name: "Go to current period", exact: true })
     .click();
   await choose(page, "Period", "Day");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Today");
@@ -353,10 +353,10 @@ test("a failed period load keeps labels, figures and the selection coherent", as
     "ALTER TABLE financial_movement RENAME TO unavailable_financial_movement",
   );
   try {
-    await page.getByRole("button", { name: "Previous", exact: true }).click();
+    await page.getByRole("button", { name: "Previous period", exact: true }).click();
     const alert = page
       .getByRole("alert")
-      .filter({ hasText: "Period unavailable" });
+      .filter({ hasText: "We couldn't load that period" });
     await expect(alert).toContainText("Aug 24, 2026 – Aug 30, 2026");
     await expect(alert).toContainText("Aug 31, 2026 – Sep 6, 2026");
     // Nothing is relabelled: the figures still describe the week that loaded.
@@ -369,10 +369,10 @@ test("a failed period load keeps labels, figures and the selection coherent", as
     );
   }
   // Navigation stays usable, and retrying loads the period still selected.
-  await page.getByRole("button", { name: "Retry period" }).click();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
   await expect(heading).toHaveText("Aug 24, 2026 – Aug 30, 2026");
   await page
-    .getByRole("button", { name: "Back to current period", exact: true })
+    .getByRole("button", { name: "Go to current period", exact: true })
     .click();
   await expect(heading).toHaveText("This week");
   await expect(page.getByText("MXN 4.00").first()).toBeVisible();

@@ -66,8 +66,8 @@ function SchemeChoice({ mode }: { mode: SchemeMode }) {
     <FieldSet>
       <FieldLegend>{legend}</FieldLegend>
       <FieldDescription>
-        Used whenever the app is in {mode} mode, including when System chooses
-        it.
+        Finance Buddy uses these colors in {mode} mode, including when your
+        device picks that mode for you.
       </FieldDescription>
       <RadioGroup
         aria-label={legend}
@@ -106,8 +106,8 @@ export function AppearanceSettings({
     <main className="flex flex-col gap-6 py-6 sm:gap-8 sm:py-10">
       <PageHeader title="Settings">
         <p className="max-w-2xl">
-          Preferences for this browser, and where you stay signed in. None of
-          them change your journal.
+          Choose how Finance Buddy looks here and manage where you&apos;re signed
+          in. These settings won&apos;t change your journal.
         </p>
       </PageHeader>
       <section aria-label="Appearance">
@@ -117,7 +117,7 @@ export function AppearanceSettings({
               <h2>Appearance</h2>
             </CardTitle>
             <CardDescription>
-              Choose light or dark mode, and the colors each mode uses.
+              Pick a theme, then choose the colors that feel right.
             </CardDescription>
           </CardHeader>
           <CardContent>

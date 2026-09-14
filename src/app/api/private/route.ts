@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     return jsonError(
       access.status,
       access.status === "unavailable"
-        ? "Workspace temporarily unavailable."
+        ? "Your journal isn't available right now."
         : "Access denied.",
     );
   return Response.json(

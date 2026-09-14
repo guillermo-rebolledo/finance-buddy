@@ -36,7 +36,7 @@ export function BudgetCard({ summary }: { summary: Summary }) {
                     ? ` It ended ${budget.overBudget ? "over" : "under"} budget.`
                     : ""
                 }`
-              : `No budget for this ${noun}.`}
+              : `You haven't set a budget for this ${noun}.`}
           </CardDescription>
           <CardAction>
             <Button variant="outline" size="sm" asChild>

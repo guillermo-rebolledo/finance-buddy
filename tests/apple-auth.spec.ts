@@ -103,7 +103,7 @@ for (const identity of [
     context,
   }) => {
     await appleSignIn(page, identity);
-    await expect(page.getByText("Sign-in was not completed")).toBeVisible();
+    await expect(page.getByText("That sign-in didn't work")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Sign in with Apple" }),
     ).toBeEnabled();

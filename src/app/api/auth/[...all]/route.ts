@@ -21,7 +21,7 @@ async function nativeSignIn(request: Request, path: string) {
 
 async function handle(request: Request) {
   const auth = getAuth();
-  if (!auth) return jsonError("unavailable", "Sign-in is not available yet.");
+  if (!auth) return jsonError("unavailable", "Sign-in isn't ready yet.");
   const path = new URL(request.url).pathname.replace("/api/auth", "");
   // Expose only the auth operations used by this private shell.
   if (
@@ -74,7 +74,7 @@ async function handle(request: Request) {
   if (native && !native.nonce)
     return jsonError(
       "invalid_field",
-      "Sign-in could not be completed. Please try again.",
+      "We couldn't sign you in. Try again.",
       { field: "idToken" },
     );
   let response;
@@ -95,7 +95,7 @@ async function handle(request: Request) {
   } catch {
     return jsonError(
       "unavailable",
-      "Sign-in could not be completed. Please try again.",
+      "We couldn't sign you in. Try again.",
     );
   }
   // The session token is handed only to a client that signs in natively or

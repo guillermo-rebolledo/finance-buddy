@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   if (before !== null && !cursor)
     return jsonError(
       "invalid_field",
-      "Show more past budgets from the list you already have.",
+      "Use the current list to load more past budgets.",
       { field: "before" },
     );
   try {
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       headers: privateHeaders,
     });
   } catch {
-    return jsonError("unavailable", "Could not load your budgets. Please retry.");
+    return jsonError("unavailable", "We couldn't load your budgets. Try again.");
   }
 }
 
@@ -74,7 +74,7 @@ async function change(
     if (change.ended)
       return jsonError(
         "period_ended",
-        "This period has ended, so its budget stays as it was.",
+        "This period has ended, so you can no longer change its budget.",
       );
     return Response.json(
       { saved: true, budget: change.budget },
@@ -83,7 +83,7 @@ async function change(
   } catch {
     return jsonError(
       "not_confirmed",
-      "The budget could not be confirmed. Retry it safely.",
+      "We didn't get confirmation that your budget was saved. It's safe to try again.",
     );
   }
 }
