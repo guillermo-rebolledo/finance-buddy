@@ -1,11 +1,6 @@
 import Link from "next/link";
-import {
-  budgetStanding,
-  money,
-  periodKindDetails,
-  type Summary,
-} from "@/lib/financial";
-import { cn } from "@/lib/utils";
+import { periodKindDetails, type Summary } from "@/lib/financial";
+import { BudgetFigures } from "@/components/budget-figures";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -39,25 +34,7 @@ export function BudgetCard({ summary }: { summary: Summary }) {
         </CardHeader>
         {budget && (
           <CardContent className="flex flex-col gap-4">
-            <p
-              className={cn(
-                "break-all text-2xl font-semibold tabular-nums",
-                budget.overBudget && "text-destructive",
-              )}
-            >
-              {budgetStanding(budget)}
-            </p>
-            <dl className="grid grid-cols-2 gap-4">
-              {[
-                ["Budget", budget.amount],
-                ["Total expenses", budget.expenses],
-              ].map(([label, amount]) => (
-                <div key={label}>
-                  <dt className="text-sm text-muted-foreground">{label}</dt>
-                  <dd className="break-all tabular-nums">{money(amount)}</dd>
-                </div>
-              ))}
-            </dl>
+            <BudgetFigures budget={budget} />
           </CardContent>
         )}
       </Card>

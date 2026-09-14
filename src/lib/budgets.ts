@@ -2,10 +2,13 @@ import "server-only";
 import { database } from "./database";
 import {
   budgetFigures,
+  mexicoToday,
+  periodKinds,
   periodStart,
   shiftPeriod,
   summaryPeriod,
   totalsOf,
+  type BudgetList,
   type BudgetView,
   type Period,
   type PeriodKind,
@@ -29,6 +32,7 @@ export function budgetOf(
   kind: PeriodKind,
   period: Period,
   expenses: bigint,
+  today: string,
 ): BudgetView | null {
   return stored
     ? budgetFigures(
@@ -36,6 +40,7 @@ export function budgetOf(
         kind,
         period,
         expenses,
+        today,
       )
     : null;
 }
@@ -59,7 +64,70 @@ export async function budgetView(owner: string, request: SummaryRequest) {
     request.kind,
     period,
     totalsOf(data.movements).expenses,
+    mexicoToday(),
   );
+}
+// Today's day, week and month, each with its budget. One statement reads the
+// three budgets and every movement across the three periods, so each view's
+// total expenses are exactly what that period's summary reports.
+export async function listBudgets(owner: string): Promise<BudgetList> {
+  const today = mexicoToday();
+  const periods = periodKinds.map((kind) => ({
+    kind,
+    period: summaryPeriod(kind, today),
+  }));
+  const from = periods.map(({ period }) => period.start).sort()[0];
+  const to = periods.map(({ period }) => period.end).sort().at(-1)!;
+  const {
+    rows: [data],
+  } = await database().query(
+    `SELECT
+    ${periods
+      .map(
+        ({ kind }, index) =>
+          `(SELECT row_to_json(b) FROM (${periodBudgetQuery("$1", `$${4 + index * 2}`, `$${5 + index * 2}`)}) b) AS "${kind}",`,
+      )
+      .join("\n")}
+    COALESCE((SELECT json_agg(m) FROM (
+      SELECT kind, amount_centavos::text AS centavos,
+        to_char(movement_date,'YYYY-MM-DD') AS date
+      FROM financial_movement
+      WHERE owner_id=$1 AND movement_date BETWEEN $2::date AND $3::date
+    ) m), '[]') AS movements`,
+    [
+      owner,
+      from,
+      to,
+      ...periods.flatMap(({ kind, period }) => [kind, period.start]),
+    ],
+  );
+  const movements: { kind: string; centavos: string; date: string }[] =
+    data.movements;
+  const now = Object.fromEntries(
+    periods.map(({ kind, period }) => [
+      kind,
+      budgetOf(
+        data[kind],
+        kind,
+        period,
+        totalsOf(
+          movements.filter(
+            ({ date }) => date >= period.start && date <= period.end,
+          ),
+        ).expenses,
+        today,
+      ),
+    ]),
+  ) as BudgetList["now"];
+  return {
+    today,
+    currency: "MXN",
+    now,
+    repeating: [],
+    upcoming: [],
+    past: [],
+    nextBefore: null,
+  };
 }
 // Sets the repeating amount from one period onward. A span starting there takes
 // the new amount. A span that started earlier is closed at the period before,

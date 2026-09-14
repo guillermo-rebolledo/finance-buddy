@@ -4,9 +4,23 @@ import {
   privateHeaders,
   requestedPeriod,
 } from "@/lib/access";
-import { setRepeatingBudget } from "@/lib/budgets";
+import { listBudgets, setRepeatingBudget } from "@/lib/budgets";
 import { centavos, validateBudget, type BudgetInput } from "@/lib/financial";
 export const dynamic = "force-dynamic";
+
+// The Budgets page reads everything it lists from here, resolved against the
+// server's today, so no client decides which periods are current.
+export async function GET(request: Request) {
+  const access = await authorizeOwner(request, false);
+  if ("denied" in access) return access.denied;
+  try {
+    return Response.json(await listBudgets(access.owner), {
+      headers: privateHeaders,
+    });
+  } catch {
+    return jsonError("unavailable", "Could not load your budgets. Please retry.");
+  }
+}
 
 // A budget names its period exactly as a summary does, so a client never
 // computes a period start. The reply is the budget that now applies to that
