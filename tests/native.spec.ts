@@ -511,7 +511,7 @@ test("a native client exports to Google Sheets with the grant made on the web, w
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   await page.getByRole("button", { name: "Export to Google Sheets" }).click();
   await connectSheets(page);
-  await expect(page.getByText("Google Sheets is connected")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Google Sheets is connected" })).toBeVisible();
 
   // Signing in natively after connecting keeps the web's grant.
   const later = await nativeSignIn();

@@ -138,7 +138,7 @@ test("the owner authorizes export and the spreadsheet holds the summary's own fi
   // Refusing so far changed nothing about ordinary use.
   expect((await report(page)).entries).toHaveLength(4);
   await connectSheets(page);
-  await expect(page.getByText("Google Sheets is connected")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Google Sheets is connected" })).toBeVisible();
   await exportThroughForm(page);
   const link = page.getByRole("link", { name: /^Open Finance Buddy:/ });
   await expect(link).toBeVisible();
@@ -594,7 +594,9 @@ test("export requires the owner's own session and a same-origin JSON request", a
 async function connectExport(page: Page) {
   await page.getByRole("button", { name: "Export to Google Sheets" }).click();
   await connectSheets(page);
+  // Next's streamed response can briefly retain a second copy in a hidden
+  // fragment. Role locators assert the exposed status, excluding that copy.
   await expect(
-    page.getByText("Google Sheets is connected"),
+    page.getByRole("status").filter({ hasText: "Google Sheets is connected" }),
   ).toBeVisible();
 }
