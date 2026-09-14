@@ -129,24 +129,26 @@ export function SheetsExport({
       {failure && (
         <Alert variant="destructive">
           <AlertTitle>Export needs attention</AlertTitle>
-          <AlertDescription className="flex flex-col items-start gap-3">
-            {failure.message}
-            {failure.reconnect ? (
-              <Button
-                variant="outline"
-                disabled={connecting}
-                onClick={() => {
-                  setConnecting(true);
-                  connect().catch(() => setConnecting(false));
-                }}
-              >
-                {connecting ? "Connecting…" : "Connect Google Sheets export"}
-              </Button>
-            ) : (
-              <Button variant="outline" disabled={pending} onClick={run}>
-                {failure.again ? "Export a new spreadsheet" : "Retry export"}
-              </Button>
-            )}
+          <AlertDescription>
+            <div className="flex flex-col items-start gap-3">
+              {failure.message}
+              {failure.reconnect ? (
+                <Button
+                  variant="outline"
+                  disabled={connecting}
+                  onClick={() => {
+                    setConnecting(true);
+                    connect().catch(() => setConnecting(false));
+                  }}
+                >
+                  {connecting ? "Connecting…" : "Connect Google Sheets export"}
+                </Button>
+              ) : (
+                <Button variant="outline" disabled={pending} onClick={run}>
+                  {failure.again ? "Export a new spreadsheet" : "Retry export"}
+                </Button>
+              )}
+            </div>
           </AlertDescription>
         </Alert>
       )}

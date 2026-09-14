@@ -2,9 +2,10 @@
 
 import { useMemo } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Label as LabelPrimitive } from "radix-ui";
 import { cn } from "@/lib/utils";
 
-import { Label } from "@/components/ui/label";
+import { labelVariants } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
@@ -110,11 +111,12 @@ function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
 function FieldLabel({
   className,
   ...props
-}: React.ComponentProps<typeof Label>) {
+}: React.ComponentProps<typeof LabelPrimitive.Root>) {
   return (
-    <Label
+    <LabelPrimitive.Root
       data-slot="field-label"
       className={cn(
+        labelVariants(),
         "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50",
         "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border [&>*]:data-[slot=field]:p-4",
         "has-data-[state=checked]:border-primary has-data-[state=checked]:bg-primary/5 dark:has-data-[state=checked]:bg-primary/10",
@@ -170,7 +172,9 @@ function FieldSeparator({
       )}
       {...props}
     >
-      <Separator className="absolute inset-0 top-1/2" />
+      <div className="absolute inset-0 top-1/2">
+        <Separator />
+      </div>
       {children && (
         <span
           className="relative mx-auto block w-fit bg-background px-2 text-muted-foreground"

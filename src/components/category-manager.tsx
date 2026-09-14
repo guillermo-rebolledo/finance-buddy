@@ -199,135 +199,141 @@ export function CategoryManager({
                   </CardTitle>
                   <CardDescription>{detail.note}</CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-6">
-                  {active.length ? (
-                    <ul className="divide-y">
-                      {active.map((category) => (
-                        <li
-                          key={category.id}
-                          className="flex flex-col gap-3 py-3 first:pt-0"
-                        >
-                          {renaming === category.id ? (
-                            <form
-                              className="flex flex-wrap items-end gap-3"
-                              onSubmit={(event) => {
-                                event.preventDefault();
-                                apply({
-                                  action: "rename",
-                                  id: category.id,
-                                  name: renameDraft,
-                                });
-                              }}
-                            >
-                              <Field className="w-full max-w-xs">
-                                <FieldLabel htmlFor={`rename-${category.id}`}>
-                                  New name for {category.name}
-                                </FieldLabel>
-                                <Input
-                                  id={`rename-${category.id}`}
-                                  autoFocus
-                                  value={renameDraft}
-                                  maxLength={categoryNameLimit}
-                                  {...nameProps(`rename:${category.id}`)}
-                                  onChange={(event) =>
-                                    setRenameDraft(event.target.value)
-                                  }
-                                />
-                              </Field>
-                              <div className="flex flex-wrap gap-2">
-                                <Button type="submit" size="sm" disabled={busy}>
-                                  {pending === `rename:${category.id}`
-                                    ? categoryActionDetails.rename.pending
-                                    : categoryActionDetails.rename.label}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={busy}
-                                  onClick={() => {
-                                    setRenaming("");
-                                    setRenameDraft("");
-                                    setError("");
-                                    setInvalidField(null);
-                                  }}
-                                >
-                                  Cancel
-                                </Button>
+                <CardContent>
+                  <div className="flex flex-col gap-6">
+                    {active.length ? (
+                      <ul className="divide-y">
+                        {active.map((category) => (
+                          <li
+                            key={category.id}
+                            className="flex flex-col gap-3 py-3 first:pt-0"
+                          >
+                            {renaming === category.id ? (
+                              <form
+                                className="flex flex-wrap items-end gap-3"
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  apply({
+                                    action: "rename",
+                                    id: category.id,
+                                    name: renameDraft,
+                                  });
+                                }}
+                              >
+                                <div className="w-full max-w-xs">
+                                  <Field>
+                                    <FieldLabel htmlFor={`rename-${category.id}`}>
+                                      New name for {category.name}
+                                    </FieldLabel>
+                                    <Input
+                                      id={`rename-${category.id}`}
+                                      autoFocus
+                                      value={renameDraft}
+                                      maxLength={categoryNameLimit}
+                                      {...nameProps(`rename:${category.id}`)}
+                                      onChange={(event) =>
+                                        setRenameDraft(event.target.value)
+                                      }
+                                    />
+                                  </Field>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button type="submit" size="sm" disabled={busy}>
+                                    {pending === `rename:${category.id}`
+                                      ? categoryActionDetails.rename.pending
+                                      : categoryActionDetails.rename.label}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={busy}
+                                    onClick={() => {
+                                      setRenaming("");
+                                      setRenameDraft("");
+                                      setError("");
+                                      setInvalidField(null);
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </form>
+                            ) : (
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <span className="min-w-0 break-words font-medium">
+                                  {category.name}
+                                </span>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    aria-label={`Rename ${category.name}`}
+                                    disabled={busy}
+                                    onClick={() => {
+                                      setRenaming(category.id);
+                                      setRenameDraft(category.name);
+                                      setError("");
+                                      setInvalidField(null);
+                                      setSuccess("");
+                                    }}
+                                  >
+                                    Rename
+                                  </Button>
+                                  {control("archive", category)}
+                                </div>
                               </div>
-                            </form>
-                          ) : (
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <span className="min-w-0 break-words font-medium">
-                                {category.name}
-                              </span>
-                              <div className="flex flex-wrap gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  aria-label={`Rename ${category.name}`}
-                                  disabled={busy}
-                                  onClick={() => {
-                                    setRenaming(category.id);
-                                    setRenameDraft(category.name);
-                                    setError("");
-                                    setInvalidField(null);
-                                    setSuccess("");
-                                  }}
-                                >
-                                  Rename
-                                </Button>
-                                {control("archive", category)}
-                              </div>
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <Empty>
-                      <EmptyHeader>
-                        <EmptyTitle>
-                          No active {detail.label.toLowerCase()} categories
-                        </EmptyTitle>
-                        <EmptyDescription>
-                          Add one below, or restore an archived category.
-                          Entries can always stay uncategorized.
-                        </EmptyDescription>
-                      </EmptyHeader>
-                    </Empty>
-                  )}
-                  <form
-                    className="flex flex-wrap items-end gap-3 border-t pt-6"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      apply({ action: "create", kind, name: newNames[kind] });
-                    }}
-                  >
-                    <Field className="w-full max-w-xs">
-                      <FieldLabel htmlFor={`new-${kind}`}>
-                        New {detail.label.toLowerCase()} category
-                      </FieldLabel>
-                      <Input
-                        id={`new-${kind}`}
-                        value={newNames[kind]}
-                        maxLength={categoryNameLimit}
-                        placeholder={`Up to ${categoryNameLimit} characters`}
-                        {...nameProps(`create:${kind}`)}
-                        onChange={(event) =>
-                          setNewNames((current) => ({
-                            ...current,
-                            [kind]: event.target.value,
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Button type="submit" disabled={busy}>
-                      {pending === `create:${kind}`
-                        ? categoryActionDetails.create.pending
-                        : `Add ${detail.label.toLowerCase()} category`}
-                    </Button>
-                  </form>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyTitle>
+                            No active {detail.label.toLowerCase()} categories
+                          </EmptyTitle>
+                          <EmptyDescription>
+                            Add one below, or restore an archived category.
+                            Entries can always stay uncategorized.
+                          </EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    )}
+                    <form
+                      className="flex flex-wrap items-end gap-3 border-t pt-6"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        apply({ action: "create", kind, name: newNames[kind] });
+                      }}
+                    >
+                      <div className="w-full max-w-xs">
+                        <Field>
+                          <FieldLabel htmlFor={`new-${kind}`}>
+                            New {detail.label.toLowerCase()} category
+                          </FieldLabel>
+                          <Input
+                            id={`new-${kind}`}
+                            value={newNames[kind]}
+                            maxLength={categoryNameLimit}
+                            placeholder={`Up to ${categoryNameLimit} characters`}
+                            {...nameProps(`create:${kind}`)}
+                            onChange={(event) =>
+                              setNewNames((current) => ({
+                                ...current,
+                                [kind]: event.target.value,
+                              }))
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <Button type="submit" disabled={busy}>
+                        {pending === `create:${kind}`
+                          ? categoryActionDetails.create.pending
+                          : `Add ${detail.label.toLowerCase()} category`}
+                      </Button>
+                    </form>
+                  </div>
                 </CardContent>
               </Card>
             </section>
