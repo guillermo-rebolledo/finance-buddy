@@ -5,13 +5,8 @@ import { Pool } from "pg";
 import { getConfig } from "./config";
 import { sheetsScope } from "./financial";
 
-function isVerifiedOwner(
-  user: { email?: string; emailVerified?: boolean },
-  ownerEmail: string,
-) {
-  return (
-    user.emailVerified === true && user.email?.toLowerCase() === ownerEmail
-  );
+function isVerifiedUser(user: { email?: string; emailVerified?: boolean }) {
+  return user.emailVerified === true && !!user.email?.trim();
 }
 
 function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
@@ -44,7 +39,7 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
         if (
           source.method !== "oauth" ||
           !trustedProviders.includes(source.oauth?.providerId ?? "") ||
-          !isVerifiedOwner(user, config.ownerEmail)
+          !isVerifiedUser(user)
         ) {
           return {
             error: "access_denied",
@@ -53,9 +48,8 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
         }
       },
     },
-    // Both verified owner identities share one user ID and journal. Linking
-    // also lets the owner's Google account grant file access for exports.
-    // Admission above applies to links too; different emails stay refused.
+    // Providers with the same verified email share one user ID and journal.
+    // Different emails keep separate accounts, including Apple relay addresses.
     account: {
       accountLinking: {
         enabled: true,
@@ -128,8 +122,7 @@ export async function getAccess(headers: Headers) {
       headers: presentedProof(headers),
     });
     if (!session) return { status: "unauthenticated" } as const;
-    if (!isVerifiedOwner(session.user, config.ownerEmail))
-      return { status: "forbidden" } as const;
+    if (!isVerifiedUser(session.user)) return { status: "forbidden" } as const;
     return { status: "authorized", userId: session.user.id, proof } as const;
   } catch {
     return { status: "unavailable" } as const;

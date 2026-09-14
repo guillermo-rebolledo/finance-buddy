@@ -11,7 +11,7 @@ fi
 
 missing=()
 # Optional provider/native settings in .env.example must not block startup.
-for key in DATABASE_URL BETTER_AUTH_URL BETTER_AUTH_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET PRIVATE_OWNER_EMAIL; do
+for key in DATABASE_URL BETTER_AUTH_URL BETTER_AUTH_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET; do
   value="$(grep -E "^${key}=" .env.local | tail -n1 | cut -d= -f2- || true)"
   [ -n "$value" ] || missing+=("$key")
 done

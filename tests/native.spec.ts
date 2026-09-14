@@ -103,7 +103,7 @@ test("the owner signs in natively and reads the same journal as the web with a b
   );
 });
 
-for (const identity of ["stranger", "unverified", "changed"] as const) {
+for (const identity of ["unverified"] as const) {
   test(`a Google ${identity} identity never becomes a native session`, async () => {
     const { response, bearer } = await nativeSignIn({ identity });
     expect(response.ok).toBe(false);
@@ -205,7 +205,7 @@ test("only the signed session token works as a bearer, and never with a cookie t
   expect((await nativeClient(bearer)("/api/private")).status).toBe(200);
 });
 
-test("native sign-in fails closed in a server without owner configuration", async () => {
+test("native sign-in fails closed in a server without an auth secret", async () => {
   const { response, bearer } = await nativeSignIn({ base: "http://127.0.0.1:3101" });
   expect(bearer).toBeNull();
   await expectRefusal(response, "unavailable", 503);

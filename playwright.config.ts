@@ -25,7 +25,7 @@ export default defineConfig({
         "node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3101",
       url: "http://127.0.0.1:3101/login",
       env: {
-        PRIVATE_OWNER_EMAIL: "",
+        BETTER_AUTH_SECRET: "",
         BETTER_AUTH_URL: "http://127.0.0.1:3101",
       },
       reuseExistingServer: false,
@@ -37,6 +37,7 @@ export default defineConfig({
       env: {
         BETTER_AUTH_URL: "http://127.0.0.1:3102",
         APPLE_CLIENT_SECRET: "",
+        PRIVATE_OWNER_EMAIL: "",
       },
       reuseExistingServer: false,
     },

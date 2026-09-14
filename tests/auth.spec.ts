@@ -60,7 +60,7 @@ test("verified owner signs in through Google and retains a database-backed sessi
   });
 });
 
-for (const identity of ["stranger", "unverified", "changed"]) {
+for (const identity of ["unverified"]) {
   test(`Google ${identity} identity is rejected without a usable session`, async ({
     page,
     context,
@@ -132,7 +132,7 @@ test("callback without state and cross-origin sign-in are refused", async ({
   await expectRefusal(response, "request_not_allowed", 403);
 });
 
-test("password sign-in and public registration are unavailable", async ({
+test("password sign-in and email/password registration are unavailable", async ({
   request,
 }) => {
   for (const path of ["sign-in/email", "sign-up/email"]) {
@@ -180,7 +180,7 @@ test("expired sessions stop working for both the page and protected requests", a
   }
 });
 
-test("missing owner configuration fails closed in an ordinary production server", async ({
+test("missing auth secret fails closed in an ordinary production server", async ({
   page,
   request,
 }) => {

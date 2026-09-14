@@ -36,7 +36,7 @@ The JWT lasts 180 days. Set a reminder to regenerate it before expiration, repla
 
 ## Local environment
 
-Keep the existing six required values in `.env.local` (`DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PRIVATE_OWNER_EMAIL`). For Apple, use:
+Keep the existing five required values in `.env.local` (`DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). For Apple, use:
 
 ```dotenv
 BETTER_AUTH_URL=https://finance-dev.example.com
@@ -64,15 +64,17 @@ In Vercel → Project → Settings → Environment Variables, select **Productio
 | `APPLE_CLIENT_SECRET` | The JWT generated for that Services ID                                                       |
 | `APPLE_IOS_BUNDLE_ID` | Optional: the native iOS app's bundle ID                                                     |
 
-Retain the existing production `DATABASE_URL`, `BETTER_AUTH_SECRET`, Google client credentials, and `PRIVATE_OWNER_EMAIL`. Use a separate local database and auth secret. Register the production hostname and exact Apple callback in Apple Developer, then redeploy; environment changes do not update an existing deployment. No new database migration is required.
+Retain the existing production `DATABASE_URL`, `BETTER_AUTH_SECRET`, and Google client credentials. Use a separate local database and auth secret. Register the production hostname and exact Apple callback in Apple Developer, then redeploy; environment changes do not update an existing deployment. No new database migration is required.
 
 For Preview, configure the variables separately, use an isolated database/secret and a stable HTTPS preview domain, and register its exact callbacks with Apple and Google. Random deployment URLs will not match registered return URLs.
 
-## Owner identity and Google Sheets
+## Account identity and Google Sheets
 
-The Apple account must share a **verified email exactly matching `PRIVATE_OWNER_EMAIL`** (case-insensitive). Choose **Share My Email**. Hide My Email supplies a different relay address, which this private workspace refuses. An Apple account using a different address is also refused. Do not change the owner setting to a relay address to work around this: that would deny your existing Google account and would not transfer its journal.
+Any Apple account with a verified email can sign in. **Hide My Email is supported** and creates a separate account for its relay address. `PRIVATE_OWNER_EMAIL` is ignored and can be removed from local and production environments after deploying the updated code.
 
-Signing in through either provider with the same verified owner email links to the same stable user ID, journal, categories, and sessions. Google Sheets still needs the owner's Google authorization: after signing in with Apple, use **Connect Google Sheets export** on the dashboard when prompted. Apple grants no Google file permissions.
+Signing in through either provider with the same verified email links to the same stable user ID, journal, and categories. To open an existing Google journal with Apple, choose **Share My Email** and use the same email as Google. Different emails are not linked, and existing journals are not transferred.
+
+Google Sheets still needs Google authorization: after signing in with Apple, use **Connect Google Sheets export** on the dashboard when prompted. The linked Google account must have the same verified email. An Apple relay account can use its journal and PDF exports, but cannot link a Google account with a different email for Sheets exports. Apple grants no Google file permissions.
 
 ## Native iOS backend contract
 
@@ -94,6 +96,6 @@ POST to `/api/auth/sign-in/social` without an Origin header. Better Auth validat
 
 ## Verify real configuration
 
-On both the local HTTPS origin and production: sign in with Apple and Share My Email, reload, confirm the existing journal is visible, sign out, sign in with Google, and confirm the same records. Try a different Apple account and confirm denial. Cancel an Apple authorization and confirm the login page offers retry. Check Google Sheets authorization/export from an Apple session. If using iOS, test a real device and verify sign-out revokes its bearer session.
+On both the local HTTPS origin and production: sign in with Apple and Share My Email, reload, confirm the existing journal is visible, sign out, sign in with Google, and confirm the same records. Try a different verified Apple account and Hide My Email; confirm each opens its own journal without exposing the first account's records. Cancel an Apple authorization and confirm the login page offers retry. Check Google Sheets authorization/export from an Apple session. If using iOS, test a real device and verify sign-out revokes its bearer session.
 
 Automated tests control Apple's HTTP responses and exercise real callback/state handling and database sessions. They do not validate your Apple Developer registration, real credentials, tunnel, or Vercel settings.

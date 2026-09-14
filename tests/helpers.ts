@@ -18,7 +18,7 @@ export async function expectRefusal(
 }
 // Restore an advancing real-time clock before signing in; tests may rewind
 // reporting time afterward, and sign-in rate limits need time to pass.
-async function advanceSignInClock() {
+export async function advanceSignInClock() {
   const previous = Number(
     await readFile(process.env.TEST_CLOCK_FILE!, "utf8").catch(() => "0"),
   );

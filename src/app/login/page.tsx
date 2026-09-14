@@ -47,8 +47,8 @@ export default async function Login({
           </CardTitle>
           <CardDescription>
             {config?.apple
-              ? "Sign in with your authorized Google or Apple account."
-              : "Sign in with your authorized Google account."}
+              ? "Sign in with your Google or Apple account."
+              : "Sign in with your Google account."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
@@ -65,8 +65,7 @@ export default async function Login({
               <Alert variant="destructive">
                 <AlertTitle>Sign-in was not completed</AlertTitle>
                 <AlertDescription>
-                  Use your authorized, verified account and try again.
-                  {config?.apple && " With Apple, choose Share My Email."}
+                  Use an account with a verified email and try again.
                 </AlertDescription>
               </Alert>
             )
@@ -76,7 +75,7 @@ export default async function Login({
         </CardContent>
         <CardFooter>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Access is limited to the workspace owner.
+            Your journal is private to your account.
           </p>
         </CardFooter>
       </Card>

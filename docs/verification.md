@@ -1,3 +1,11 @@
+> Historical evidence below includes the former owner-only policy. [ADR 0009](adr/0009-allow-verified-users-to-own-separate-journals.md) supersedes that admission rule: any verified Google or Apple email may sign in, with records isolated by user ID. Live checklists below reflect the new policy.
+
+# Verified-user access and sidebar navigation — September 13, 2026
+
+- Removed the owner-email allowlist. Browser and native Google/Apple sign-in admit any verified email, including Apple relay addresses. Tests cover separate journals, cross-user write refusal, PDF isolation, stable identities after email changes, and revoking only the current user's sessions.
+- Reproduced the collapsed sidebar defect with a focused browser regression: the transparent Preferences label intercepted Categories clicks after a reload. Hidden labels now use `visibility: hidden`, preserving the layout while allowing the links underneath to receive clicks. The test also checks re-expansion and phone drawer navigation.
+- The focused category/sidebar run passed all 18 cases across desktop and phone. The final full suite passed 172 cases with zero failures and 12 intentional skips (native-client/app-build cases run once on desktop). Typecheck, lint, and production build passed. Standards and spec reviews found no issues.
+
 # Private shell verification — issue #2
 
 Verified September 11, 2026.
@@ -30,7 +38,7 @@ Project: `guillermo-ortizs-projects/finance-buddy`.
 
 At verification, `vercel env ls` reported **no environment variables** in the project. No live Neon connection, Google OAuth client credentials, application auth secret, base origin, or private owner address are available to this implementation session.
 
-Configure `DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `PRIVATE_OWNER_EMAIL` privately in Vercel, register the exact Google callback, explicitly migrate the target Neon database, and redeploy. Then use the owner's actual Google account to verify sign-in, private home/database connectivity, refresh, sign-out, and rejection of another account.
+Configure `DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` privately in Vercel, register the exact Google callback, explicitly migrate the target Neon database, and redeploy. Then use the owner's actual Google account to verify sign-in, private home/database connectivity, refresh, sign-out, and a separate journal for another verified account.
 
 **Real Google sign-in and Neon connectivity have not passed live verification.** The deployed unconfigured login screen is not evidence of those acceptance criteria. Keep issue #2 open until that evidence is recorded. No financial features or live financial data were introduced.
 
@@ -56,7 +64,7 @@ Verified September 13, 2026, on branch `feat/ios-native-backend` at commit `1571
 ## iPhone checklist
 
 - [ ] Sign in natively with the owner's Google account; the app opens on this week.
-- [ ] Sign in with another Google identity; the app is refused and keeps no session.
+- [ ] Sign in with another verified Google identity; it gets a separate journal and cannot access the first account's records.
 - [ ] Record income, an expense, and a refund; after a refresh the web registry shows all three.
 - [ ] Correct one movement's amount and date, and delete another; the app and the web agree on the day, week, and month totals each touched.
 - [ ] Browse a past month; its figures match the web dashboard for that month.

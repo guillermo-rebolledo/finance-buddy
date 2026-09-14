@@ -94,10 +94,7 @@ test("Google and Apple sign-ins retain the same owner and journal in both direct
 });
 
 for (const identity of [
-  "stranger",
   "unverified",
-  "changed",
-  "relay",
   "provider-failure",
   "cancelled",
 ]) {
@@ -206,9 +203,7 @@ test("native Apple sign-in rejects foreign, expired, forged, unverified, and unb
     { issuer: "https://untrusted.example" },
     { age: 7200 },
     { nonce: "wrong-nonce" },
-    { identity: "stranger" as const },
     { identity: "unverified" as const },
-    { identity: "changed" as const },
   ]) {
     const token = await appleIdToken({ nonce, ...options });
     const response = await nativeClient()("/api/auth/sign-in/social", {

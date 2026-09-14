@@ -26,7 +26,6 @@ export function getConfig() {
     APPLE_CLIENT_SECRET,
     APPLE_IOS_BUNDLE_ID,
     MINIMUM_IOS_BUILD,
-    PRIVATE_OWNER_EMAIL,
   } = process.env;
   if (
     !DATABASE_URL ||
@@ -34,8 +33,7 @@ export function getConfig() {
     !BETTER_AUTH_SECRET ||
     BETTER_AUTH_SECRET.length < 32 ||
     !GOOGLE_CLIENT_ID ||
-    !GOOGLE_CLIENT_SECRET ||
-    !PRIVATE_OWNER_EMAIL
+    !GOOGLE_CLIENT_SECRET
   )
     return null;
   try {
@@ -52,8 +50,6 @@ export function getConfig() {
         ))
     )
       return null;
-    const ownerEmail = PRIVATE_OWNER_EMAIL.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) return null;
     const minimumIosBuild = MINIMUM_IOS_BUILD?.trim()
       ? appBuild(MINIMUM_IOS_BUILD.trim())
       : undefined;
@@ -84,7 +80,6 @@ export function getConfig() {
               clientSecret: APPLE_CLIENT_SECRET.trim(),
             }
           : undefined,
-      ownerEmail,
     };
   } catch {
     return null;
