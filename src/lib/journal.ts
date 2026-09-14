@@ -1,5 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { budgetOf, periodBudgetQuery } from "./budgets";
 import { database } from "./database";
 import {
   categoryRefusal,
@@ -65,7 +66,8 @@ export async function summarize(
   await seedCategories(owner);
   const today = mexicoToday();
   const period = summaryPeriod(request.kind, request.date);
-  // One statement supplies both entries and choices from the same PostgreSQL snapshot.
+  // One statement supplies entries, choices and the period's budget from the
+  // same PostgreSQL snapshot, so the budget measures exactly these totals.
   const {
     rows: [data],
   } = await database().query(
@@ -76,8 +78,9 @@ export async function summarize(
       m.category_id AS "categoryId", COALESCE(c.name,'Uncategorized') AS category, m.note, m.created_at
       FROM financial_movement m LEFT JOIN category c ON c.id=m.category_id AND c.owner_id=m.owner_id
       WHERE m.owner_id=$1 AND m.movement_date BETWEEN $2::date AND $3::date
-    ) e), '[]') AS entries`,
-    [owner, period.start, period.end],
+    ) e), '[]') AS entries,
+    (SELECT row_to_json(b) FROM (${periodBudgetQuery("$1", "$4", "$2")}) b) AS budget`,
+    [owner, period.start, period.end, request.kind],
   );
   const { income, expenses } = totalsOf(data.entries);
   const groups = new Map<
@@ -127,6 +130,7 @@ export async function summarize(
       ...group,
       amount: decimal(value),
     })),
+    budget: budgetOf(data.budget, request.kind, period, expenses),
   };
 }
 export async function saveEntry(
