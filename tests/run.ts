@@ -56,7 +56,11 @@ async function main() {
       GOOGLE_CLIENT_ID: "test-client",
       GOOGLE_CLIENT_SECRET: "test-secret",
       GOOGLE_IOS_CLIENT_ID: "test-ios-client",
+      APPLE_CLIENT_ID: "test-apple-service",
+      APPLE_CLIENT_SECRET: "test-apple-secret",
+      APPLE_IOS_BUNDLE_ID: "test-apple-ios",
       MINIMUM_IOS_BUILD: "12",
+      // Legacy deployments may still set this; it must not restrict admission.
       PRIVATE_OWNER_EMAIL: "owner@example.test",
     };
     const migrate = spawnSync("pnpm", ["db:migrate"], {

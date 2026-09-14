@@ -3,7 +3,9 @@ import "server-only";
 // bundle version takes, compared number by number: 12.1 is newer than 12 and
 // older than 13.
 export function appBuild(value: string) {
-  return /^\d{1,9}(\.\d{1,9})*$/.test(value) ? value.split(".").map(Number) : null;
+  return /^\d{1,9}(\.\d{1,9})*$/.test(value)
+    ? value.split(".").map(Number)
+    : null;
 }
 export function buildAtLeast(build: number[], minimum: number[]) {
   for (let i = 0; i < Math.max(build.length, minimum.length); i++) {
@@ -20,8 +22,10 @@ export function getConfig() {
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
     GOOGLE_IOS_CLIENT_ID,
+    APPLE_CLIENT_ID,
+    APPLE_CLIENT_SECRET,
+    APPLE_IOS_BUNDLE_ID,
     MINIMUM_IOS_BUILD,
-    PRIVATE_OWNER_EMAIL,
   } = process.env;
   if (
     !DATABASE_URL ||
@@ -29,8 +33,7 @@ export function getConfig() {
     !BETTER_AUTH_SECRET ||
     BETTER_AUTH_SECRET.length < 32 ||
     !GOOGLE_CLIENT_ID ||
-    !GOOGLE_CLIENT_SECRET ||
-    !PRIVATE_OWNER_EMAIL
+    !GOOGLE_CLIENT_SECRET
   )
     return null;
   try {
@@ -47,8 +50,6 @@ export function getConfig() {
         ))
     )
       return null;
-    const ownerEmail = PRIVATE_OWNER_EMAIL.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) return null;
     const minimumIosBuild = MINIMUM_IOS_BUILD?.trim()
       ? appBuild(MINIMUM_IOS_BUILD.trim())
       : undefined;
@@ -65,7 +66,20 @@ export function getConfig() {
         ...(GOOGLE_IOS_CLIENT_ID?.trim() ? [GOOGLE_IOS_CLIENT_ID.trim()] : []),
       ],
       googleClientSecret: GOOGLE_CLIENT_SECRET,
-      ownerEmail,
+      apple:
+        APPLE_CLIENT_ID?.trim() && APPLE_CLIENT_SECRET?.trim()
+          ? {
+              // Keep the Services ID first for browser redirects; native ID
+              // tokens may additionally name the explicitly configured app.
+              clientId: [
+                APPLE_CLIENT_ID.trim(),
+                ...(APPLE_IOS_BUNDLE_ID?.trim()
+                  ? [APPLE_IOS_BUNDLE_ID.trim()]
+                  : []),
+              ],
+              clientSecret: APPLE_CLIENT_SECRET.trim(),
+            }
+          : undefined,
     };
   } catch {
     return null;

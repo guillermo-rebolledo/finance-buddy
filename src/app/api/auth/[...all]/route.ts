@@ -4,8 +4,8 @@ import { getAccess, getAuth, presentedProof } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// A native client signs in by presenting a Google ID token instead of following
-// Google's redirect. It must carry the nonce the app handed Google, so a
+// A native client signs in by presenting a provider ID token instead of following
+// its redirect. It must carry the nonce used for that authorization, so a
 // captured token cannot be replayed: Better Auth only compares a nonce it is
 // given.
 async function nativeSignIn(request: Request, path: string) {
@@ -31,6 +31,7 @@ async function handle(request: Request) {
       // access, asked for separately from sign-in.
       "/link-social",
       "/callback/google",
+      "/callback/apple",
       "/get-session",
       "/sign-out",
       // Sign out everywhere: every session of the owner ends, a phone's too.
@@ -53,11 +54,18 @@ async function handle(request: Request) {
   // a native client, which has none, may leave it out: to present an ID token,
   // or to end sessions with the bearer token it holds.
   const origin = request.headers.get("origin");
+  // Apple's form_post callback is the sole cross-site POST exception. Better
+  // Auth redirects to GET, then proves the original state and browser cookie.
+  const appleCallback =
+    path === "/callback/apple" &&
+    !!getConfig()?.apple &&
+    origin === "https://appleid.apple.com";
   const endsBearerSession =
     request.headers.has("authorization") &&
     ["/sign-out", "/revoke-sessions"].includes(path);
   if (
     request.method === "POST" &&
+    !appleCallback &&
     (origin === null
       ? !(native || endsBearerSession)
       : origin !== getConfig()?.origin)

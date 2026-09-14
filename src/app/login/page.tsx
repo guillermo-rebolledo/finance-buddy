@@ -18,7 +18,8 @@ export default async function Login({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const configured = !!getConfig();
+  const config = getConfig();
+  const configured = !!config;
   const failed = !!(await searchParams).error;
   return (
     <main className="relative mx-auto flex min-h-svh max-w-5xl flex-col justify-center gap-12 px-6 py-12 md:flex-row md:items-center md:gap-20">
@@ -45,7 +46,9 @@ export default async function Login({
             <h2>Welcome to Finance Buddy</h2>
           </CardTitle>
           <CardDescription>
-            Sign in with your authorized Google account.
+            {config?.apple
+              ? "Sign in with your Google or Apple account."
+              : "Sign in with your Google account."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
@@ -62,16 +65,17 @@ export default async function Login({
               <Alert variant="destructive">
                 <AlertTitle>Sign-in was not completed</AlertTitle>
                 <AlertDescription>
-                  Use the authorized, verified Google account and try again.
+                  Use an account with a verified email and try again.
                 </AlertDescription>
               </Alert>
             )
           )}
           <AuthButton action="signin" disabled={!configured} />
+          {config?.apple && <AuthButton action="signin" provider="apple" />}
         </CardContent>
         <CardFooter>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Access is limited to the workspace owner.
+            Your journal is private to your account.
           </p>
         </CardFooter>
       </Card>

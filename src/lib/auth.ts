@@ -5,16 +5,12 @@ import { Pool } from "pg";
 import { getConfig } from "./config";
 import { sheetsScope } from "./financial";
 
-function isVerifiedOwner(
-  user: { email?: string; emailVerified?: boolean },
-  ownerEmail: string,
-) {
-  return (
-    user.emailVerified === true && user.email?.toLowerCase() === ownerEmail
-  );
+function isVerifiedUser(user: { email?: string; emailVerified?: boolean }) {
+  return user.emailVerified === true && !!user.email?.trim();
 }
 
 function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
+  const trustedProviders = ["google", ...(config.apple ? ["apple"] : [])];
   return betterAuth({
     baseURL: config.origin,
     secret: config.secret,
@@ -24,7 +20,10 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
       connectionTimeoutMillis: 5000,
       query_timeout: 5000,
     }),
-    trustedOrigins: [config.origin],
+    trustedOrigins: [
+      config.origin,
+      ...(config.apple ? ["https://appleid.apple.com"] : []),
+    ],
     emailAndPassword: { enabled: false },
     socialProviders: {
       google: {
@@ -33,13 +32,14 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
         prompt: "select_account",
         requireEmailVerification: true,
       },
+      ...(config.apple ? { apple: config.apple } : {}),
     },
     user: {
       validateUserInfo: ({ user, source }) => {
         if (
           source.method !== "oauth" ||
-          source.oauth?.providerId !== "google" ||
-          !isVerifiedOwner(user, config.ownerEmail)
+          !trustedProviders.includes(source.oauth?.providerId ?? "") ||
+          !isVerifiedUser(user)
         ) {
           return {
             error: "access_denied",
@@ -48,13 +48,12 @@ function createAuth(config: NonNullable<ReturnType<typeof getConfig>>) {
         }
       },
     },
-    // Linking exists for one purpose: the same Google identity granting the
-    // extra file access an export needs. Different emails stay refused, so the
-    // only account that can ever be linked is the owner's own.
+    // Providers with the same verified email share one user ID and journal.
+    // Different emails keep separate accounts, including Apple relay addresses.
     account: {
       accountLinking: {
         enabled: true,
-        trustedProviders: ["google"],
+        trustedProviders,
         allowDifferentEmails: false,
       },
     },
@@ -123,8 +122,7 @@ export async function getAccess(headers: Headers) {
       headers: presentedProof(headers),
     });
     if (!session) return { status: "unauthenticated" } as const;
-    if (!isVerifiedOwner(session.user, config.ownerEmail))
-      return { status: "forbidden" } as const;
+    if (!isVerifiedUser(session.user)) return { status: "forbidden" } as const;
     return { status: "authorized", userId: session.user.id, proof } as const;
   } catch {
     return { status: "unavailable" } as const;

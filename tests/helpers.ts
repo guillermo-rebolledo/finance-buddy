@@ -18,7 +18,7 @@ export async function expectRefusal(
 }
 // Restore an advancing real-time clock before signing in; tests may rewind
 // reporting time afterward, and sign-in rate limits need time to pass.
-async function advanceSignInClock() {
+export async function advanceSignInClock() {
   const previous = Number(
     await readFile(process.env.TEST_CLOCK_FILE!, "utf8").catch(() => "0"),
   );
@@ -65,6 +65,38 @@ export async function signIn(
   );
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google" }).click();
+}
+
+export async function appleSignIn(
+  page: import("@playwright/test").Page,
+  identity = "owner",
+) {
+  await advanceSignInClock();
+  await page.route(`${appOrigin}/api/auth/callback/apple`, async (route) => {
+    // The harness is HTTP loopback; browsers otherwise redact Origin on the
+    // HTTPS-to-HTTP hop. Production's HTTPS callback receives Apple's origin.
+    const response = await route.fetch({
+      headers: { ...route.request().headers(), origin: "https://appleid.apple.com" },
+      maxRedirects: 0,
+    });
+    await route.fulfill({ response });
+  });
+  await page.route("https://appleid.apple.com/auth/authorize**", async (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("client_id")).toBe("test-apple-service");
+    expect(url.searchParams.get("response_mode")).toBe("form_post");
+    const callback = url.searchParams.get("redirect_uri")!;
+    expect(callback).toBe(`${appOrigin}/api/auth/callback/apple`);
+    // A real cross-site form POST: SameSite=Lax cookies are withheld until
+    // Better Auth redirects to its GET callback to validate the saved state.
+    await route.fulfill({ contentType: "text/html", body: `
+      <form method="post" action="${callback}">
+        <input name="state" value="${url.searchParams.get("state")}">
+        <input name="${identity === "cancelled" ? "error" : "code"}" value="${identity === "cancelled" ? "access_denied" : identity}">
+      </form><script>document.forms[0].submit()</script>` });
+  });
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Sign in with Apple" }).click();
 }
 
 // The server clock is the only clock a summary may depend on, so tests move it
@@ -376,6 +408,30 @@ async function serverNow() {
     await readFile(process.env.TEST_CLOCK_FILE!, "utf8").catch(() => "0"),
   );
   return Date.now() + (offset || 0);
+}
+export async function appleIdToken({
+  identity = "owner",
+  audience = "test-apple-ios",
+  nonce,
+  age = 0,
+  issuer = "https://appleid.apple.com",
+}: {
+  identity?: keyof typeof googleIdentities;
+  audience?: string;
+  nonce?: string;
+  age?: number;
+  issuer?: string;
+} = {}) {
+  const { privateKey, kid } = await nativeSigningKey();
+  const claims = googleIdentities[identity];
+  const issued = Math.floor((await serverNow()) / 1000) - age;
+  return new SignJWT({ ...claims, sub: claims.sub.replace("google-", "apple-"), nonce })
+    .setProtectedHeader({ alg: "RS256", kid })
+    .setIssuer(issuer)
+    .setAudience(audience)
+    .setIssuedAt(issued)
+    .setExpirationTime(issued + 3600)
+    .sign(privateKey);
 }
 export async function googleIdToken({
   identity = "owner",

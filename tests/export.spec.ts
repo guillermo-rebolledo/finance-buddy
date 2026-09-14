@@ -300,7 +300,7 @@ test("an existing snapshot is untouched by later corrections, deletions and rena
   expect(after.text).not.toContain("Will be deleted");
 });
 
-test("an export is refused without an owner session and to a stranger", async ({
+test("exports require a session and include only the signed-in user's journal", async ({
   page,
   browser,
   request,
@@ -311,15 +311,14 @@ test("an export is refused without an owner session and to a stranger", async ({
   await expectRefusal(anonymous, "unauthenticated", 401);
   expect(anonymous.headers()["content-type"]).toContain("application/json");
   expect(await anonymous.text()).not.toContain("Private note");
-  // A stranger's Google identity never becomes a session, so the export stays
-  // shut to it exactly as it is to an anonymous request.
+  // A second signed-in user can export only their own journal.
   const other = await browser.newContext();
   const stranger = await other.newPage();
   await signIn(stranger, "stranger");
-  await expect(stranger.getByText("Sign-in was not completed")).toBeVisible();
-  const refused = await stranger.request.get("/api/journal/export");
-  await expectRefusal(refused, "unauthenticated", 401);
-  expect(await refused.text()).not.toContain("Private note");
+  await expect(stranger.getByRole("heading", { name: "This week" })).toBeVisible();
+  const exported = await stranger.request.get("/api/journal/export");
+  expect(exported.status()).toBe(200);
+  expect(await pdfText(await exported.body())).not.toContain("Private note");
   await other.close();
   // An unresolvable period is refused before anything is read.
   const invalid = await page.request.get("/api/journal/export?kind=quarter");
