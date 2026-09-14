@@ -1,6 +1,42 @@
 import { test, expect } from "@playwright/test";
 import { signIn } from "./helpers";
 
+test("sidebar navigation preserves the shared frame", async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  const toggle = page.getByRole("button", { name: "Toggle navigation" });
+  const originalToggle = await toggle.elementHandle();
+  const documentRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "document")
+      documentRequests.push(request.url());
+  });
+
+  for (const [destination, path] of [
+    ["Categories", "/categories"],
+    ["Settings", "/settings"],
+    ["Dashboard", "/dashboard"],
+    ["Budgets", "/budgets"],
+    ["Entries", "/"],
+  ]) {
+    if (testInfo.project.name === "phone") await toggle.click();
+    await page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("link", { name: destination, exact: true })
+      .click();
+    await expect(page).toHaveURL(path);
+    await expect(
+      page.getByRole("main").getByRole("heading").first(),
+    ).toBeVisible();
+    expect(
+      await toggle.evaluate((node, original) => node === original, originalToggle),
+    ).toBe(true);
+  }
+  expect(documentRequests).toEqual([]);
+});
+
 test("navigation links work after toggling the sidebar and reloading", async ({
   page,
 }, testInfo) => {

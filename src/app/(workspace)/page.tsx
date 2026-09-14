@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAccess } from "@/lib/auth";
-import { AppShell } from "@/components/app-shell";
 import { WorkspaceUnavailable } from "@/components/workspace-unavailable";
 import { SummaryOverview } from "@/components/summary-overview";
 import { summarize } from "@/lib/journal";
@@ -16,9 +15,5 @@ export default async function Home() {
     access.userId,
     currentWeek(mexicoToday()),
   ).catch(() => null);
-  return (
-    <AppShell>
-      <SummaryOverview initial={summary} />
-    </AppShell>
-  );
+  return <SummaryOverview initial={summary} />;
 }
