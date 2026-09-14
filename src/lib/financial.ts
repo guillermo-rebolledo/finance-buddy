@@ -56,6 +56,24 @@ export const entryKinds = Object.keys(entryKindDetails) as EntryKind[];
 export function entryKindDetail(kind: string) {
   return entryKindDetails[kind as EntryKind];
 }
+export type Totals = { income: bigint; expenses: bigint };
+export function emptyTotals(): Totals {
+  return { income: 0n, expenses: 0n };
+}
+// A movement moves exactly one of the two running totals, by its own type's
+// sign, so a refund reduces expenses the same way in a summary, a trend and a
+// budget.
+export function addMovement(totals: Totals, kind: EntryKind, value: bigint) {
+  const detail = entryKindDetails[kind];
+  totals[detail.total] += value * detail.sign;
+}
+// The one aggregation behind every period's total income and total expenses.
+export function totalsOf(movements: { kind: string; centavos: string }[]) {
+  const totals = emptyTotals();
+  for (const movement of movements)
+    addMovement(totals, movement.kind as EntryKind, BigInt(movement.centavos));
+  return totals;
+}
 export type EntryInput = {
   id: string;
   kind: string;
@@ -215,13 +233,15 @@ export function periodKindDetail(value: string) {
 export function summaryPeriod(kind: PeriodKind, date: string) {
   return periodKindDetails[kind].containing(date);
 }
+// Aligns any date to the first day of its period: the date itself, its week's
+// Monday, or its month's 1st.
+export function periodStart(kind: PeriodKind, date: string) {
+  return summaryPeriod(kind, date).start;
+}
 // Stepping starts from the period's own first day, so month lengths, year
 // boundaries and weeks spanning months all move by exactly one period.
 export function shiftPeriod(kind: PeriodKind, date: string, direction: 1 | -1) {
-  return periodKindDetails[kind].step(
-    summaryPeriod(kind, date).start,
-    direction,
-  );
+  return periodKindDetails[kind].step(periodStart(kind, date), direction);
 }
 export function periodLabel(kind: PeriodKind, period: Period) {
   return periodKindDetails[kind].name(period);

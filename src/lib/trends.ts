@@ -1,7 +1,9 @@
 import "server-only";
 import { database } from "./database";
 import {
+  addMovement,
   decimal,
+  emptyTotals,
   entryKindDetails,
   mexicoToday,
   periodKindDetails,
@@ -17,16 +19,6 @@ import {
   type Trend,
 } from "./financial";
 
-type Totals = { income: bigint; expenses: bigint };
-function empty(): Totals {
-  return { income: 0n, expenses: 0n };
-}
-// A movement moves exactly one of the two running totals, by its own type's
-// sign, so a refund reduces expenses here the same way it does in a summary.
-function apply(totals: Totals, kind: EntryKind, value: bigint) {
-  const detail = entryKindDetails[kind];
-  totals[detail.total] += value * detail.sign;
-}
 type Group = {
   categoryId: string | null;
   category: string;
@@ -58,9 +50,9 @@ export async function trendReport(
   // Each period is keyed by its own first day, and a movement is placed by the
   // period containing its movement date, so the same calendar boundaries apply
   // here as in a summary and every movement lands in exactly one bucket.
-  const buckets = new Map(periods.map((period) => [period.start, empty()]));
-  const current = empty();
-  const earlier = empty();
+  const buckets = new Map(periods.map((period) => [period.start, emptyTotals()]));
+  const current = emptyTotals();
+  const earlier = emptyTotals();
   const groups = new Map<string | null, Group>();
   for (const row of rows as {
     kind: EntryKind;
@@ -72,9 +64,9 @@ export async function trendReport(
     const value = BigInt(row.centavos);
     const detail = entryKindDetails[row.kind];
     const within = row.date >= span.start;
-    apply(within ? current : earlier, row.kind, value);
+    addMovement(within ? current : earlier, row.kind, value);
     if (within)
-      apply(
+      addMovement(
         buckets.get(summaryPeriod(request.kind, row.date).start)!,
         row.kind,
         value,

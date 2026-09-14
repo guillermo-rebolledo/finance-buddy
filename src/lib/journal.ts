@@ -9,6 +9,7 @@ import {
   entryMissing,
   mexicoToday,
   summaryPeriod,
+  totalsOf,
   type EntryKind,
   type Category,
   type EntryError,
@@ -78,8 +79,7 @@ export async function summarize(
     ) e), '[]') AS entries`,
     [owner, period.start, period.end],
   );
-  let income = 0n,
-    expenses = 0n;
+  const { income, expenses } = totalsOf(data.entries);
   const groups = new Map<
     string | null,
     { categoryId: string | null; category: string; value: bigint }
@@ -92,9 +92,7 @@ export async function summarize(
       // A refund reduces expenses and its category group on its own movement date.
       const kind = entryKindDetails[row.kind as EntryKind];
       const effect = value * kind.sign;
-      if (kind.total === "income") income += effect;
-      else {
-        expenses += effect;
+      if (kind.total === "expenses") {
         const group = groups.get(row.categoryId) ?? {
           categoryId: row.categoryId,
           category: row.category,
