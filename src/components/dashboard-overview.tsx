@@ -13,6 +13,7 @@ import {
   usePeriodView,
 } from "@/components/period-view";
 import { PageHeader } from "@/components/page-header";
+import { BudgetCard } from "@/components/budget-card";
 import { ReportExport } from "@/components/report-export";
 import { SpendingTrends } from "@/components/spending-trends";
 
@@ -87,6 +88,7 @@ export function DashboardOverview({
               </Card>
             ))}
           </section>
+          <BudgetCard summary={summary} />
           <Card>
             <CardHeader>
               <CardTitle>
