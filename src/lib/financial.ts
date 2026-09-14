@@ -56,6 +56,24 @@ export const entryKinds = Object.keys(entryKindDetails) as EntryKind[];
 export function entryKindDetail(kind: string) {
   return entryKindDetails[kind as EntryKind];
 }
+export type Totals = { income: bigint; expenses: bigint };
+export function emptyTotals(): Totals {
+  return { income: 0n, expenses: 0n };
+}
+// A movement moves exactly one of the two running totals, by its own type's
+// sign, so a refund reduces expenses the same way in a summary, a trend and a
+// budget.
+export function addMovement(totals: Totals, kind: EntryKind, value: bigint) {
+  const detail = entryKindDetails[kind];
+  totals[detail.total] += value * detail.sign;
+}
+// The one aggregation behind every period's total income and total expenses.
+export function totalsOf(movements: { kind: string; centavos: string }[]) {
+  const totals = emptyTotals();
+  for (const movement of movements)
+    addMovement(totals, movement.kind as EntryKind, BigInt(movement.centavos));
+  return totals;
+}
 export type EntryInput = {
   id: string;
   kind: string;
@@ -85,6 +103,7 @@ export type Summary = SummaryRequest &
       category: string;
       amount: string;
     }[];
+    budget: BudgetView | null;
   };
 export function mexicoToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -215,13 +234,15 @@ export function periodKindDetail(value: string) {
 export function summaryPeriod(kind: PeriodKind, date: string) {
   return periodKindDetails[kind].containing(date);
 }
+// Aligns any date to the first day of its period: the date itself, its week's
+// Monday, or its month's 1st.
+export function periodStart(kind: PeriodKind, date: string) {
+  return summaryPeriod(kind, date).start;
+}
 // Stepping starts from the period's own first day, so month lengths, year
 // boundaries and weeks spanning months all move by exactly one period.
 export function shiftPeriod(kind: PeriodKind, date: string, direction: 1 | -1) {
-  return periodKindDetails[kind].step(
-    summaryPeriod(kind, date).start,
-    direction,
-  );
+  return periodKindDetails[kind].step(periodStart(kind, date), direction);
 }
 export function periodLabel(kind: PeriodKind, period: Period) {
   return periodKindDetails[kind].name(period);
@@ -362,6 +383,8 @@ export function signedMoney(amount: string) {
 // never the rest of the owner's Drive. The connect control and the server-side
 // token check name the same scope.
 export const sheetsScope = "https://www.googleapis.com/auth/drive.file";
+// Up to 12 whole digits and two decimal places, the most a stored amount holds.
+export const amountPattern = /^\d{1,12}(\.\d{1,2})?$/;
 export const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type EntryError = { field: keyof EntryInput | null; message: string };
@@ -378,7 +401,7 @@ export function validateEntry(
     return { field: "kind", message: "Choose income, expense, or refund." };
   if (
     typeof entry.amount !== "string" ||
-    !/^\d{1,12}(\.\d{1,2})?$/.test(entry.amount) ||
+    !amountPattern.test(entry.amount) ||
     centavos(entry.amount) <= 0n
   )
     return {
@@ -426,6 +449,72 @@ export function categoryRefusal(kind: string): EntryError {
         ? "Choose an active expense category for this refund, or leave it uncategorized."
         : "Choose an active category for this entry type.",
   };
+}
+
+// A budget view: one period's budget beside that period's total expenses and
+// what remains. The dashboard and every budget reply share this shape.
+export type BudgetView = Period & {
+  kind: PeriodKind;
+  amount: string;
+  repeats: boolean;
+  expenses: string;
+  remaining: string;
+  overBudget: boolean;
+  daysLeft: number | null;
+  leftPerDay: string | null;
+};
+// The one calculation behind every budget figure. The remaining budget is
+// signed and never clamped, so refunds can lift it above the budget, and a
+// period is over budget only once its total expenses exceed the budget.
+export function budgetFigures(
+  budget: { amount: bigint; repeats: boolean },
+  kind: PeriodKind,
+  period: Period,
+  expenses: bigint,
+): BudgetView {
+  const remaining = budget.amount - expenses;
+  return {
+    kind,
+    start: period.start,
+    end: period.end,
+    amount: decimal(budget.amount),
+    repeats: budget.repeats,
+    expenses: decimal(expenses),
+    remaining: decimal(remaining),
+    overBudget: remaining < 0n,
+    daysLeft: null,
+    leftPerDay: null,
+  };
+}
+// An overspent period reads as the excess, never as a negative remaining budget.
+export function budgetStanding(budget: BudgetView) {
+  return budget.overBudget
+    ? `Over by ${money(budget.remaining.slice(1))}`
+    : `${money(budget.remaining)} left`;
+}
+export type BudgetInput = { amount: string; oneOff: boolean };
+export type BudgetError = { field: keyof BudgetInput | null; message: string };
+// A budget amount follows the Amount format but may be zero, so a period can be
+// planned with no spending at all.
+export function validateBudget(input: unknown): BudgetError | null {
+  if (!input || typeof input !== "object")
+    return { field: null, message: "Enter a budget amount." };
+  const budget = input as Record<string, unknown>;
+  if (typeof budget.amount !== "string" || !amountPattern.test(budget.amount))
+    return {
+      field: "amount",
+      message:
+        "Enter an amount of zero or more with up to two decimal places (maximum 999,999,999,999.99).",
+    };
+  if (typeof budget.oneOff !== "boolean")
+    return { field: "oneOff", message: "Choose whether this budget repeats." };
+  if (budget.oneOff)
+    return {
+      field: "oneOff",
+      message:
+        "One-off budgets are not available yet. Set a repeating budget instead.",
+    };
+  return null;
 }
 
 // One descriptor per category change: how the control reads while idle, busy and
