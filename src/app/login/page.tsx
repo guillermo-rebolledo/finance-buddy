@@ -20,15 +20,15 @@ export default async function Login({
 }) {
   const config = getConfig();
   const configured = !!config;
-  const failed = !!(await searchParams).error;
+  const { error } = await searchParams;
   return (
-    <main className="relative mx-auto flex min-h-svh max-w-5xl flex-col justify-center gap-12 px-6 py-12 md:flex-row md:items-center md:gap-20">
+    <main className="relative mx-auto flex min-h-svh max-w-5xl flex-col justify-center gap-12 px-6 py-12 lg:flex-row lg:items-center lg:gap-20">
       <section className="flex flex-1 flex-col gap-6">
         <div className="flex items-center gap-3 text-sm font-semibold tracking-wide">
           <BookOpen aria-hidden="true" className="size-6 text-primary" />{" "}
           FINANCE BUDDY
         </div>
-        <h1 className="max-w-lg font-serif text-5xl leading-tight tracking-tight md:text-6xl">
+        <h1 className="max-w-lg font-serif text-5xl leading-tight tracking-tight lg:text-6xl">
           See where your money goes.
           <br />
           One entry at a time.
@@ -38,7 +38,7 @@ export default async function Login({
           journal.
         </p>
       </section>
-      <div className="w-full md:max-w-sm">
+      <div className="w-full lg:max-w-sm">
         <Card>
           <CardHeader>
             <Badge variant="secondary">
@@ -64,11 +64,13 @@ export default async function Login({
                   </AlertDescription>
                 </Alert>
               ) : (
-                failed && (
+                !!error && (
                   <Alert variant="destructive">
                     <AlertTitle>That sign-in didn&apos;t work</AlertTitle>
                     <AlertDescription>
-                      Try again with an account that has a verified email.
+                      {error === "email_not_verified"
+                        ? "Try again with an account that has a verified email."
+                        : "Try signing in again. If it still doesn't work, try again later."}
                     </AlertDescription>
                   </Alert>
                 )
