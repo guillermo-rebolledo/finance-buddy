@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAccess } from "@/lib/auth";
-import { AppShell } from "@/components/app-shell";
 import { WorkspaceUnavailable } from "@/components/workspace-unavailable";
 import { DashboardOverview } from "@/components/dashboard-overview";
 import { summarize } from "@/lib/journal";
@@ -19,9 +18,5 @@ export default async function Dashboard() {
     summarize(access.userId, request).catch(() => null),
     trendReport(access.userId, request).catch(() => null),
   ]);
-  return (
-    <AppShell>
-      <DashboardOverview initial={{ summary, trend }} />
-    </AppShell>
-  );
+  return <DashboardOverview initial={{ summary, trend }} />;
 }
