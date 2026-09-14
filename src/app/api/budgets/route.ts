@@ -6,6 +6,7 @@ import {
 } from "@/lib/access";
 import {
   listBudgets,
+  type BudgetChange,
   removeOneOffBudget,
   setOneOffBudget,
   setRepeatingBudget,
@@ -13,15 +14,11 @@ import {
 } from "@/lib/budgets";
 import {
   centavos,
-  mexicoToday,
   parsePastCursor,
-  periodHasEnded,
-  summaryPeriod,
   validateBudget,
   validateBudgetRemoval,
   type BudgetInput,
   type BudgetRemoval,
-  type BudgetView,
   type SummaryRequest,
 } from "@/lib/financial";
 export const dynamic = "force-dynamic";
@@ -51,7 +48,7 @@ export async function GET(request: Request) {
 
 // A budget names its period exactly as a summary does, so a client never
 // computes a period start. A period that has ended keeps its budget, so only a
-// current or future one can change. The reply is the budget that now applies
+// current or future one can change, as judged when the change runs. The reply is the budget that now applies
 // to that period, and repeating the same request changes nothing further.
 async function change(
   request: Request,
@@ -60,7 +57,7 @@ async function change(
     owner: string,
     period: SummaryRequest,
     input: unknown,
-  ) => Promise<BudgetView | null>,
+  ) => Promise<BudgetChange>,
 ) {
   const access = await authorizeOwner(request, true);
   if ("denied" in access) return access.denied;
@@ -73,14 +70,16 @@ async function change(
       return jsonError("invalid_field", refused.message, {
         field: refused.field,
       });
-    const { kind, date } = requested.period;
-    if (periodHasEnded(summaryPeriod(kind, date), mexicoToday()))
+    const change = await apply(access.owner, requested.period, input);
+    if (change.ended)
       return jsonError(
         "period_ended",
         "This period has ended, so its budget stays as it was.",
       );
-    const budget = await apply(access.owner, requested.period, input);
-    return Response.json({ saved: true, budget }, { headers: privateHeaders });
+    return Response.json(
+      { saved: true, budget: change.budget },
+      { headers: privateHeaders },
+    );
   } catch {
     return jsonError(
       "not_confirmed",

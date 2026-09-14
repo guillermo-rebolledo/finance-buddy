@@ -6,8 +6,8 @@ import {
   decimal,
   mexicoToday,
   pastCursor,
+  periodHasEnded,
   periodKinds,
-  periodStart,
   shiftPeriod,
   summaryPeriod,
   totalsOf,
@@ -21,15 +21,25 @@ import {
 
 export type StoredBudget = { centavos: string; repeats: boolean };
 // The budget for one period is resolved when it is read: the period's one-off
-// budget if it has one, otherwise the repeating span containing it. The
-// embedding statement names the placeholders, so a summary resolves its budget
-// from the same snapshot as its totals.
+// budget if it has one, otherwise the repeating span containing it. Repeating
+// spans never overlap, so only the latest one starting by that period can
+// contain it. Each is one lookup on the primary key, however many budgets came
+// before. The embedding statement names the placeholders, so a summary
+// resolves its budget from the same snapshot as its totals.
 export function periodBudgetQuery(owner: string, kind: string, start: string) {
-  return `SELECT amount_centavos::text AS centavos, repeats FROM budget
-    WHERE owner_id=${owner} AND period_kind=${kind}
-    AND first_period_start <= ${start}::date
-    AND (last_period_start IS NULL OR last_period_start >= ${start}::date)
-    ORDER BY repeats LIMIT 1`;
+  return `SELECT centavos, repeats FROM (
+      (SELECT amount_centavos::text AS centavos, repeats, 0 AS precedence
+      FROM budget WHERE owner_id=${owner} AND period_kind=${kind}
+        AND NOT repeats AND first_period_start = ${start}::date)
+      UNION ALL
+      (SELECT centavos, repeats, 1 FROM (
+        SELECT amount_centavos::text AS centavos, repeats, last_period_start
+        FROM budget WHERE owner_id=${owner} AND period_kind=${kind}
+          AND repeats AND first_period_start <= ${start}::date
+        ORDER BY first_period_start DESC LIMIT 1
+      ) latest
+      WHERE last_period_start IS NULL OR last_period_start >= ${start}::date)
+    ) candidates ORDER BY precedence LIMIT 1`;
 }
 export function budgetOf(
   stored: StoredBudget | null,
@@ -110,8 +120,8 @@ export async function entryBudget(owner: string, date: string) {
   return views.find(Boolean) ?? null;
 }
 // Kinds sort day, week, month wherever periods of different kinds meet.
-const kindRank = (kind: string) =>
-  `array_position(ARRAY[${periodKinds.map((name) => `'${name}'`).join(",")}], ${kind})`;
+const kindList = periodKinds.map((name) => `'${name}'`).join(",");
+const kindRank = (kind: string) => `array_position(ARRAY[${kindList}], ${kind})`;
 // A period's last day from its kind and first day, mirroring
 // periodKindDetails' `containing` in SQL, which cannot ask the map. Kind names
 // double as PostgreSQL interval units ('1 day', '1 week', '1 month') where
@@ -138,22 +148,55 @@ export async function listBudgets(
     )} ORDER BY p.start, ${kindRank("p.kind")}`,
     [owner, today],
   );
-  // Every period a budget row covered, one-off or repeating, listed once and
-  // capped at today, since a period starting later has not ended. One more
-  // than a page is read to tell whether another page follows.
+  // Past pages backward without walking the whole history. For each kind, the
+  // newest period a page may show is its `top`: one that ended before today and
+  // comes after the cursor. Only the budgets covering it, found by the same
+  // lookups a single period uses, and the budgets ending latest before it, read
+  // backward along budget_history, can hold that kind's newest periods, and
+  // each contributes at most a page of them. Twice a page of budgets is read,
+  // since a one-off and a repeating budget can cover the same period, which is
+  // listed once. A page therefore reads the same bounded number of budgets and
+  // periods however many years of budgets there are, and wherever the cursor
+  // is. One more than a page is read to tell whether another page follows.
+  const window = pastPageSize + 1;
   const { rows: past } = await database().query<PeriodFigures>(
     `${periodFiguresQuery(
-      `SELECT g.kind, g.start, e."end" FROM (
-        SELECT DISTINCT b.period_kind AS kind, s.start::date AS start
-        FROM budget b CROSS JOIN LATERAL generate_series(
-          b.first_period_start::timestamp,
-          LEAST(COALESCE(b.last_period_start, $2::date), $2::date)::timestamp,
-          ('1 ' || b.period_kind)::interval) AS s(start)
-        WHERE b.owner_id=$1
-      ) g CROSS JOIN LATERAL (SELECT ${periodEnd("g.kind", "g.start")} AS "end") e
-      WHERE e."end" < $2::date AND ($3::date IS NULL OR e."end" < $3::date
-        OR (e."end" = $3::date AND ${kindRank("g.kind")} > ${kindRank("$4::text")}))
-      ORDER BY e."end" DESC, ${kindRank("g.kind")} LIMIT ${pastPageSize + 1}`,
+      `SELECT g.kind, g.start, ${periodEnd("g.kind", "g.start")} AS "end" FROM (
+        SELECT DISTINCT k.kind, s.start::date AS start
+        FROM unnest(ARRAY[${kindList}]) AS k(kind)
+        CROSS JOIN LATERAL (
+          SELECT date_trunc(k.kind, (LEAST($2::date - 1,
+              CASE WHEN $3::date IS NULL THEN $2::date - 1
+                WHEN ${kindRank("k.kind")} > ${kindRank("$4::text")} THEN $3::date
+                ELSE $3::date - 1 END) + 1)::timestamp
+            - ('1 ' || k.kind)::interval)::date AS top
+        ) t
+        CROSS JOIN LATERAL (
+          SELECT rows.first, rows.top FROM (
+            (SELECT b.first_period_start AS first, t.top FROM budget b
+            WHERE b.owner_id=$1 AND b.period_kind=k.kind AND NOT b.repeats
+              AND b.first_period_start = t.top)
+            UNION ALL
+            (SELECT latest.first, t.top FROM (
+              SELECT b.first_period_start AS first, b.last_period_start AS last
+              FROM budget b
+              WHERE b.owner_id=$1 AND b.period_kind=k.kind AND b.repeats
+                AND b.first_period_start <= t.top
+              ORDER BY b.first_period_start DESC LIMIT 1
+            ) latest WHERE latest.last IS NULL OR latest.last >= t.top)
+            UNION ALL
+            (SELECT b.first_period_start, b.last_period_start FROM budget b
+            WHERE b.owner_id=$1 AND b.period_kind=k.kind
+              AND b.last_period_start < t.top
+            ORDER BY b.last_period_start DESC LIMIT ${2 * window})
+          ) rows ORDER BY rows.top DESC LIMIT ${2 * window}
+        ) r
+        CROSS JOIN LATERAL generate_series(r.top::timestamp,
+          GREATEST(r.first::timestamp,
+            r.top::timestamp - ${window - 1} * ('1 ' || k.kind)::interval),
+          -('1 ' || k.kind)::interval) AS s(start)
+      ) g
+      ORDER BY "end" DESC, ${kindRank("g.kind")} LIMIT ${window}`,
     )} ORDER BY p."end" DESC, ${kindRank("p.kind")}`,
     [owner, today, before?.end ?? null, before?.kind ?? null],
   );
@@ -202,25 +245,36 @@ export async function listBudgets(
       past.length > pastPageSize ? pastCursor(pastViews.at(-1)!) : null,
   };
 }
+// What a budget change did: refused because its period has ended, or applied,
+// with the budget that then applies to the named period.
+export type BudgetChange =
+  | { ended: true }
+  | { ended: false; budget: BudgetView | null };
 // Every budget change runs in one transaction, and changes to one owner's
 // budgets of one kind are serialized, so spans are read and rewritten without
-// another change interleaving. `apply` receives the owner, kind and period
-// start as the statement parameters $1–$3. The reply is the budget that then applies to the named
-// period, read after the change commits, so it describes what was kept.
+// another change interleaving. Whether the period has ended is judged once the
+// lock is held, just before the change: a request that waited for another
+// change, even past midnight, sees the period as it stands when it runs.
+// `apply` receives the owner, kind and period start as the statement
+// parameters $1–$3. The budget replied is read after the change commits, so it
+// describes what was kept.
 async function changeBudgets(
   owner: string,
   request: SummaryRequest,
   apply: (client: PoolClient, params: string[], start: string) => Promise<void>,
-) {
-  const start = periodStart(request.kind, request.date);
+): Promise<BudgetChange> {
+  const period = summaryPeriod(request.kind, request.date);
   const client = await database().connect();
+  let ended: boolean;
   try {
     await client.query("BEGIN");
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
       [`budget:${owner}:${request.kind}`],
     );
-    await apply(client, [owner, request.kind, start], start);
+    ended = periodHasEnded(period, mexicoToday());
+    if (!ended)
+      await apply(client, [owner, request.kind, period.start], period.start);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -228,7 +282,9 @@ async function changeBudgets(
   } finally {
     client.release();
   }
-  return budgetView(owner, request);
+  return ended
+    ? { ended: true }
+    : { ended: false, budget: await budgetView(owner, request) };
 }
 // Sets the repeating amount from one period onward. A span starting there takes
 // the new amount. A span that started earlier is closed at the period before,

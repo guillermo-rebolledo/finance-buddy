@@ -1653,3 +1653,137 @@ test("a one-off budget set from the form is listed under Upcoming one-offs, and 
     fullPage: true,
   });
 });
+
+test("a budget change waiting behind another is judged when it runs, so it cannot change a period that ended meanwhile", async ({
+  page,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  // 23:59 on 30 June in Mexico City.
+  await moveClockTo("2026-07-01T05:59:00Z");
+  await setBudget(page, "?kind=month", "3000");
+  const {
+    rows: [owner],
+  } = await pool.query(`SELECT id FROM "user" WHERE email='owner@example.test'`);
+  // Another change to the owner's month budgets is under way: it holds the
+  // lock every change to one owner's budgets of one kind takes in turn.
+  const key = `budget:${owner.id}:month`;
+  const other = await pool.connect();
+  try {
+    await other.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [key]);
+    const waiting = put(page, "?kind=month&date=2026-06-30", {
+      amount: "3100",
+      oneOff: false,
+    });
+    await expect
+      .poll(
+        async () =>
+          (
+            await pool.query(
+              "SELECT count(*)::int AS waiting FROM pg_locks WHERE locktype='advisory' AND NOT granted",
+            )
+          ).rows[0].waiting,
+      )
+      .toBe(1);
+    // Midnight passes before its turn comes.
+    await moveClockTo("2026-07-01T06:00:00Z");
+    await other.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [
+      key,
+    ]);
+    await expectRefusal(await waiting, "period_ended", 409);
+  } finally {
+    // Dropping the connection releases the lock even if a step above failed.
+    other.release(true);
+  }
+  expect(
+    (await summary(page, "?kind=month&date=2026-06-30")).budget.amount,
+  ).toBe("3000.00");
+});
+
+test("past budgets page through years of history and more budgets than a page reads, without skipping or repeating a period", async ({
+  page,
+}, testInfo) => {
+  desktopOnly(testInfo);
+  await atMidday(page);
+  // Eight weeks in early 2025: MXN 100 a week from Monday 6 January, stopped
+  // from 3 March.
+  await moveClockTo("2025-01-06T18:00:00Z");
+  await setBudget(page, "?kind=week", "100");
+  await moveClockTo("2025-03-03T18:00:00Z");
+  expect(await stopBudget(page, "?kind=week")).toBeNull();
+  // A one-off day budget for each of 45 days from 1 July 2026, set on the day.
+  const day = (offset: number) =>
+    new Date(Date.parse("2026-07-01T12:00:00Z") + offset * 86400000)
+      .toISOString()
+      .slice(0, 10);
+  for (let offset = 0; offset < 45; offset++) {
+    await moveClockTo(`${day(offset)}T18:00:00Z`);
+    expect(
+      (
+        await put(page, "?kind=day", {
+          amount: String(offset + 1),
+          oneOff: true,
+        })
+      ).status(),
+    ).toBe(200);
+  }
+  // MXN 5 a day from 10 August, which takes that day's one-off budget's place;
+  // the one-off budgets of 11–14 August still override it.
+  await moveClockTo("2026-08-10T18:00:00Z");
+  await setBudget(page, "?kind=day", "5");
+  await moveClockTo(midday);
+
+  type View = { kind: string; start: string; amount: string; repeats: boolean };
+  const seen: View[] = [];
+  let before: string | null = null;
+  do {
+    const response = await page.request.get(
+      `/api/budgets${before === null ? "" : `?before=${before}`}`,
+    );
+    expect(response.status()).toBe(200);
+    const pageOfPast: { past: View[]; nextBefore: string | null } =
+      await response.json();
+    expect(pageOfPast.past.length).toBeLessThanOrEqual(20);
+    seen.push(...pageOfPast.past);
+    before = pageOfPast.nextBefore;
+  } while (before !== null);
+
+  // 1 July through 8 September is seventy days, newest first, then the eight
+  // weeks of 2025.
+  expect(seen.map((view) => `${view.kind} ${view.start}`)).toEqual([
+    ...Array.from({ length: 70 }, (_, index) => `day ${day(69 - index)}`),
+    ...[
+      "2025-02-24",
+      "2025-02-17",
+      "2025-02-10",
+      "2025-02-03",
+      "2025-01-27",
+      "2025-01-20",
+      "2025-01-13",
+      "2025-01-06",
+    ].map((start) => `week ${start}`),
+  ]);
+  const budgetOn = (name: string) => {
+    const view = seen.find((view) => `${view.kind} ${view.start}` === name)!;
+    return [view.amount, view.repeats];
+  };
+  expect(
+    [
+      "day 2026-07-01",
+      "day 2026-08-09",
+      "day 2026-08-10",
+      "day 2026-08-14",
+      "day 2026-08-15",
+      "day 2026-09-08",
+      "week 2025-01-06",
+    ].map(budgetOn),
+  ).toEqual([
+    ["1.00", false],
+    ["40.00", false],
+    ["5.00", true],
+    ["45.00", false],
+    ["5.00", true],
+    ["5.00", true],
+    ["100.00", true],
+  ]);
+});
