@@ -13,6 +13,7 @@ import {
   type Trend,
 } from "@/lib/financial";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import {
@@ -129,7 +130,7 @@ export function PeriodNavigation({
       aria-label="Period navigation"
       className="flex flex-col gap-3 rounded-lg border bg-card p-3 shadow-xs sm:p-4"
     >
-      <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,20rem)] sm:items-end">
+      <div className="grid gap-3 sm:grid-cols-period sm:items-end">
         <Field>
           <FieldLabel htmlFor="period">Period</FieldLabel>
           <Select
@@ -139,7 +140,7 @@ export function PeriodNavigation({
               onShow({ kind: next as PeriodKind, date: view.date })
             }
           >
-            <SelectTrigger id="period" className="w-full data-[size=default]:h-9">
+            <SelectTrigger id="period">
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper">
@@ -155,11 +156,10 @@ export function PeriodNavigation({
           <FieldLabel htmlFor="anchor">Jump to date</FieldLabel>
           {/* With no period known yet there is nothing to step from; the date
               picker and Back to current period still reach one. */}
-          <div className="flex">
+          <ButtonGroup>
             <Button
               variant="outline"
               size="icon"
-              className="rounded-r-none"
               disabled={!anchor}
               onClick={() =>
                 onShow({ kind: view.kind, date: shiftPeriod(view.kind, anchor, -1) })
@@ -171,7 +171,6 @@ export function PeriodNavigation({
             <Input
               id="anchor"
               type="date"
-              className="-mx-px min-w-0 flex-1 rounded-none tabular-nums focus-visible:z-10"
               value={anchor}
               onChange={(event) => {
                 if (isCalendarDate(event.target.value))
@@ -181,7 +180,6 @@ export function PeriodNavigation({
             <Button
               variant="outline"
               size="icon"
-              className="rounded-l-none"
               disabled={!anchor}
               onClick={() =>
                 onShow({ kind: view.kind, date: shiftPeriod(view.kind, anchor, 1) })
@@ -190,7 +188,7 @@ export function PeriodNavigation({
               <ChevronRight aria-hidden="true" />
               <span className="sr-only">Next</span>
             </Button>
-          </div>
+          </ButtonGroup>
         </Field>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t pt-3">
@@ -198,15 +196,16 @@ export function PeriodNavigation({
           {(loaded ?? periodKindDetails[view.kind]).note}
           {loading && " Loading…"}
         </p>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-mx-2"
-          onClick={() => onShow({ kind: view.kind, date: null })}
-        >
-          <RotateCcw aria-hidden="true" />
-          Back to current period
-        </Button>
+        <div className="-mx-2 flex">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onShow({ kind: view.kind, date: null })}
+          >
+            <RotateCcw aria-hidden="true" />
+            Back to current period
+          </Button>
+        </div>
       </div>
     </section>
   );

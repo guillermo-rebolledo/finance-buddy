@@ -46,27 +46,30 @@ export function ModeToggle({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>Theme</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
-          {themeModes.map((mode) => (
-            <DropdownMenuRadioItem key={mode.id} value={mode.id}>
-              <mode.icon aria-hidden="true" />
-              {mode.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        {withSettings && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/settings">
-                <Settings aria-hidden="true" />
-                Appearance settings
-              </Link>
-            </DropdownMenuItem>
-          </>
-        )}
+      <DropdownMenuContent align="end">
+        {/* With the menu's own padding and border, it is 12rem wide. */}
+        <div className="w-45.5">
+          <DropdownMenuLabel>Theme</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+            {themeModes.map((mode) => (
+              <DropdownMenuRadioItem key={mode.id} value={mode.id}>
+                <mode.icon aria-hidden="true" />
+                {mode.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          {withSettings && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings">
+                  <Settings aria-hidden="true" />
+                  Appearance settings
+                </Link>
+              </DropdownMenuItem>
+            </>
+          )}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

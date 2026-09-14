@@ -47,10 +47,12 @@ function SheetContent({
   className,
   children,
   side = "right",
+  variant = "default",
   showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
+  variant?: "default" | "sidebar"
   showCloseButton?: boolean
 }) {
   return (
@@ -68,6 +70,8 @@ function SheetContent({
             "inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
           side === "bottom" &&
             "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+          variant === "sidebar" &&
+            "w-(--sidebar-width) bg-sidebar text-sidebar-foreground",
           className
         )}
         {...props}

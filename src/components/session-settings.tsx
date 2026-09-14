@@ -13,7 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -54,50 +54,52 @@ export function SessionSettings() {
             browser and the iOS app. Use it if a phone is lost or stolen.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col items-start gap-3">
-          <AlertDialog
-            open={open}
-            onOpenChange={(next) => {
-              if (!pending) setOpen(next);
-            }}
-          >
-            <AlertDialogTrigger asChild>
-              <Button variant="outline">Sign out everywhere</Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Sign out everywhere?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Every session ends, including this browser and any phone
-                  signed in to Finance Buddy. Each device has to sign in again.
-                  Your journal is unchanged.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={pending}>
-                  Keep sessions
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  className={buttonVariants({ variant: "destructive" })}
-                  disabled={pending}
-                  onClick={(event) => {
-                    // The dialog stays open until the server confirms.
-                    event.preventDefault();
-                    revoke();
-                  }}
-                >
-                  {pending ? "Signing out…" : "Sign out everywhere"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          {failed && (
-            <Alert variant="destructive">
-              <AlertDescription>
-                Signing out everywhere could not be confirmed. Please try again.
-              </AlertDescription>
-            </Alert>
-          )}
+        <CardContent>
+          <div className="flex flex-col items-start gap-3">
+            <AlertDialog
+              open={open}
+              onOpenChange={(next) => {
+                if (!pending) setOpen(next);
+              }}
+            >
+              <AlertDialogTrigger asChild>
+                <Button variant="outline">Sign out everywhere</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Sign out everywhere?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Every session ends, including this browser and any phone
+                    signed in to Finance Buddy. Each device has to sign in again.
+                    Your journal is unchanged.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={pending}>
+                    Keep sessions
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    disabled={pending}
+                    onClick={(event) => {
+                      // The dialog stays open until the server confirms.
+                      event.preventDefault();
+                      revoke();
+                    }}
+                  >
+                    {pending ? "Signing out…" : "Sign out everywhere"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            {failed && (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  Signing out everywhere could not be confirmed. Please try again.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
         </CardContent>
       </Card>
     </section>

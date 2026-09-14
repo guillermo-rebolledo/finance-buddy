@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@shadcn/lint": "0.1.0",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "22.20.2",
     "@types/pg": "8.23.1",
