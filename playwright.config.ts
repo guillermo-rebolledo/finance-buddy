@@ -30,5 +30,15 @@ export default defineConfig({
       },
       reuseExistingServer: false,
     },
+    {
+      command:
+        "node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3102",
+      url: "http://127.0.0.1:3102/login",
+      env: {
+        BETTER_AUTH_URL: "http://127.0.0.1:3102",
+        APPLE_CLIENT_SECRET: "",
+      },
+      reuseExistingServer: false,
+    },
   ],
 });

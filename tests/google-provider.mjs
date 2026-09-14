@@ -59,6 +59,39 @@ const tokens = Object.fromEntries(
     ]),
   ),
 );
+const appleTokens = Object.fromEntries(
+  await Promise.all(
+    Object.entries({
+      ...identities,
+      relay: { sub: "apple-relay", email: "hidden@privaterelay.appleid.com", email_verified: "true" },
+    }).map(async ([code, claims]) => [
+      code,
+      await new SignJWT({ ...claims, sub: claims.sub.replace("google-", "apple-") })
+        .setProtectedHeader({ alg: "RS256", kid: "fixture" })
+        .setIssuer("https://appleid.apple.com")
+        .setAudience("test-apple-service")
+        .setIssuedAt()
+        .setExpirationTime("1d")
+        .sign(privateKey),
+    ]),
+  ),
+);
+agent
+  .get("https://appleid.apple.com")
+  .intercept({ path: "/auth/token", method: "POST" })
+  .reply((options) => {
+    const params = new URLSearchParams(String(options.body));
+    const token = appleTokens[params.get("code")];
+    if (!token || params.get("client_id") !== "test-apple-service" ||
+        params.get("client_secret") !== "test-apple-secret" ||
+        params.get("redirect_uri") !== "http://127.0.0.1:3100/api/auth/callback/apple")
+      return { statusCode: 400, data: { error: "invalid_grant" } };
+    return { statusCode: 200, data: {
+      access_token: "controlled-apple-token", token_type: "Bearer",
+      expires_in: 3600, id_token: token,
+    } };
+  })
+  .persist();
 // One control file names how Google answers next: an expired grant, a refused
 // refresh, a revoked permission, exhausted quota, a provider failure, or a
 // request that never gets a reply. Tests write it; the app never reads it.
@@ -182,6 +215,11 @@ function nativeKeys() {
     return [];
   }
 }
+agent
+  .get("https://appleid.apple.com")
+  .intercept({ path: "/auth/keys" })
+  .reply(() => ({ statusCode: 200, data: { keys: [publicJwk, ...nativeKeys()] } }))
+  .persist();
 agent
   .get("https://www.googleapis.com")
   .intercept({ path: "/oauth2/v3/certs" })

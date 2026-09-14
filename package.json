@@ -13,6 +13,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
+    "auth:apple-secret": "node --env-file-if-exists=.env.local --import tsx scripts/apple-client-secret.ts",
     "test": "tsx tests/run.ts",
     "dev:local": "bash scripts/dev.sh"
   },

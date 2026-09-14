@@ -10,11 +10,11 @@ if [ ! -f .env.local ]; then
 fi
 
 missing=()
-while IFS='=' read -r key _; do
-  case "$key" in ''|\#*) continue ;; esac
-  value="$(grep -E "^${key}=" .env.local | tail -n1 | cut -d= -f2-)"
+# Optional provider/native settings in .env.example must not block startup.
+for key in DATABASE_URL BETTER_AUTH_URL BETTER_AUTH_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET PRIVATE_OWNER_EMAIL; do
+  value="$(grep -E "^${key}=" .env.local | tail -n1 | cut -d= -f2- || true)"
   [ -n "$value" ] || missing+=("$key")
-done < .env.example
+done
 if [ ${#missing[@]} -gt 0 ]; then
   echo "Incomplete .env.local, empty: ${missing[*]}" >&2
   exit 1

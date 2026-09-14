@@ -8,9 +8,11 @@ export function AuthButton({
   action,
   disabled = false,
   compact = false,
+  provider = "google",
 }: {
   action: "signin" | "signout";
   disabled?: boolean;
+  provider?: "google" | "apple";
   // A quieter sign-out for the navigation drawer, reduced to its icon when the
   // drawer is collapsed while keeping its name for assistive technology.
   compact?: boolean;
@@ -24,7 +26,7 @@ export function AuthButton({
       const result =
         action === "signin"
           ? await client.signIn.social({
-              provider: "google",
+              provider,
               callbackURL: "/",
               errorCallbackURL: "/login",
             })
@@ -38,11 +40,15 @@ export function AuthButton({
   }
   return (
     <div
-      className={compact ? "flex min-w-0 flex-1 flex-col gap-3" : "flex flex-col gap-3"}
+      className={
+        compact ? "flex min-w-0 flex-1 flex-col gap-3" : "flex flex-col gap-3"
+      }
     >
       <Button
         size={compact ? "sm" : "lg"}
-        variant={action === "signin" ? "default" : compact ? "ghost" : "outline"}
+        variant={
+          action === "signin" ? "default" : compact ? "ghost" : "outline"
+        }
         className={
           compact
             ? "justify-start group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
@@ -54,21 +60,27 @@ export function AuthButton({
       >
         {compact && <LogOut aria-hidden="true" />}
         <span
-          className={compact ? "group-data-[collapsible=icon]:sr-only" : undefined}
+          className={
+            compact ? "group-data-[collapsible=icon]:sr-only" : undefined
+          }
         >
           {pending
             ? action === "signin"
               ? "Connecting…"
               : "Signing out…"
             : action === "signin"
-              ? "Continue with Google"
+              ? provider === "apple"
+                ? "Sign in with Apple"
+                : "Continue with Google"
               : "Sign out"}
         </span>
       </Button>
       {error && (
         <Alert
           variant="destructive"
-          className={compact ? "group-data-[collapsible=icon]:hidden" : undefined}
+          className={
+            compact ? "group-data-[collapsible=icon]:hidden" : undefined
+          }
         >
           <AlertDescription>
             {action === "signin"

@@ -3,7 +3,9 @@ import "server-only";
 // bundle version takes, compared number by number: 12.1 is newer than 12 and
 // older than 13.
 export function appBuild(value: string) {
-  return /^\d{1,9}(\.\d{1,9})*$/.test(value) ? value.split(".").map(Number) : null;
+  return /^\d{1,9}(\.\d{1,9})*$/.test(value)
+    ? value.split(".").map(Number)
+    : null;
 }
 export function buildAtLeast(build: number[], minimum: number[]) {
   for (let i = 0; i < Math.max(build.length, minimum.length); i++) {
@@ -20,6 +22,9 @@ export function getConfig() {
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
     GOOGLE_IOS_CLIENT_ID,
+    APPLE_CLIENT_ID,
+    APPLE_CLIENT_SECRET,
+    APPLE_IOS_BUNDLE_ID,
     MINIMUM_IOS_BUILD,
     PRIVATE_OWNER_EMAIL,
   } = process.env;
@@ -65,6 +70,20 @@ export function getConfig() {
         ...(GOOGLE_IOS_CLIENT_ID?.trim() ? [GOOGLE_IOS_CLIENT_ID.trim()] : []),
       ],
       googleClientSecret: GOOGLE_CLIENT_SECRET,
+      apple:
+        APPLE_CLIENT_ID?.trim() && APPLE_CLIENT_SECRET?.trim()
+          ? {
+              // Keep the Services ID first for browser redirects; native ID
+              // tokens may additionally name the explicitly configured app.
+              clientId: [
+                APPLE_CLIENT_ID.trim(),
+                ...(APPLE_IOS_BUNDLE_ID?.trim()
+                  ? [APPLE_IOS_BUNDLE_ID.trim()]
+                  : []),
+              ],
+              clientSecret: APPLE_CLIENT_SECRET.trim(),
+            }
+          : undefined,
       ownerEmail,
     };
   } catch {
