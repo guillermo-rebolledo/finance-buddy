@@ -64,6 +64,7 @@ test("privacy and support stay available with signed-in browser sessions", async
   page,
 }) => {
   await signIn(page);
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
   for (const publicPage of publicPages) {
     await page.goto(publicPage.path);
     await expect(page).toHaveURL(new RegExp(`${publicPage.path}$`));
