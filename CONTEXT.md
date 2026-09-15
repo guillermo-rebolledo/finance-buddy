@@ -4,6 +4,13 @@ Personal finance covers a person's income and expenses so they can understand ho
 
 ## Language
 
+**User identity**:
+A person's ownership of their private financial movements, categories, budgets, and export snapshots in Finance Buddy. One user identity may be reached through more than one sign-in account.
+_Avoid_: Account (without qualification)
+
+**Sign-in account**:
+A Google or Apple account used to reach a user identity. Sign-in accounts with the same verified email can share a user identity; different emails, including private relay addresses, remain separate.
+
 **Financial movement**:
 A recorded income, expense, or refund with an amount and a movement date. It may also have a category and a note.
 _Avoid_: Movement (without qualification)

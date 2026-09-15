@@ -34,6 +34,22 @@ Copy the emitted JWT into `APPLE_CLIENT_SECRET`. The expiration is printed separ
 
 The JWT lasts 180 days. Set a reminder to regenerate it before expiration, replace it in every environment using that Services ID, and redeploy/restart. An expired or revoked credential stops new Apple browser sign-ins. Generate a separate JWT for each distinct Services ID. See [Better Auth's Apple credential documentation](https://better-auth.com/docs/authentication/apple).
 
+## Generate and renew the bundle-ID secret
+
+Native authorization codes are issued to the app's bundle ID. A JWT for the web Services ID cannot exchange or revoke their tokens. Run the same generator with the **bundle ID as its subject**:
+
+```sh
+APPLE_CLIENT_ID=com.example.financebuddy \
+APPLE_TEAM_ID=YOUR_TEAM_ID \
+APPLE_KEY_ID=YOUR_KEY_ID \
+APPLE_PRIVATE_KEY_PATH=/absolute/path/to/AuthKey_YOUR_KEY_ID.p8 \
+pnpm --silent auth:apple-secret
+```
+
+Here `APPLE_CLIENT_ID` is only the generator's input for this command. Keep the deployed `APPLE_CLIENT_ID` set to the **web Services ID**. Store this new JWT in `APPLE_IOS_CLIENT_SECRET`, alongside `APPLE_IOS_BUNDLE_ID=com.example.financebuddy`, and keep the original web JWT in `APPLE_CLIENT_SECRET`.
+
+Both JWTs expire after 180 days. Record both expiration dates, regenerate each with its own subject before expiry, replace the values in every environment that uses them, and restart/redeploy. The private `.p8` key stays on the generation machine. Without the bundle-ID secret, native ID-token sign-in still works, but account deletion with a native authorization code returns `apple_revocation_failed` and keeps all local records. The setting is ignored without `APPLE_IOS_BUNDLE_ID`.
+
 ## Local environment
 
 Keep the existing five required values in `.env.local` (`DATABASE_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). For Apple, use:
@@ -44,6 +60,8 @@ APPLE_CLIENT_ID=com.example.financebuddy.web
 APPLE_CLIENT_SECRET=PASTE_GENERATED_JWT
 # Optional, only for native Apple ID-token sign-in:
 APPLE_IOS_BUNDLE_ID=com.example.financebuddy
+# Required when deleting with a native Apple authorization code:
+APPLE_IOS_CLIENT_SECRET=PASTE_BUNDLE_ID_JWT
 ```
 
 1. Set up an HTTPS tunnel with a stable domain forwarding to `http://localhost:3000`. Register its hostname and Apple return URL above.
@@ -63,6 +81,7 @@ In Vercel → Project → Settings → Environment Variables, select **Productio
 | `APPLE_CLIENT_ID`     | The Services ID registered for this website                                                  |
 | `APPLE_CLIENT_SECRET` | The JWT generated for that Services ID                                                       |
 | `APPLE_IOS_BUNDLE_ID` | Optional: the native iOS app's bundle ID                                                     |
+| `APPLE_IOS_CLIENT_SECRET` | JWT generated with that bundle ID as its subject; required for native Apple code exchange during deletion |
 
 Retain the existing production `DATABASE_URL`, `BETTER_AUTH_SECRET`, and Google client credentials. Use a separate local database and auth secret. Register the production hostname and exact Apple callback in Apple Developer, then redeploy; environment changes do not update an existing deployment. No new database migration is required.
 
@@ -94,8 +113,18 @@ Generate a fresh random nonce for each authorization. Set the Apple request's no
 
 POST to `/api/auth/sign-in/social` without an Origin header. Better Auth validates the issuer, signature, audience, expiry, and nonce. The app requires a nonce. Store the signed `set-auth-token` response header in Keychain and send it as `Authorization: Bearer <value>`, exactly as for Google. Without the optional bundle ID, native bundle audiences are refused. The browser flow continues using the Services ID.
 
+## Delete an Apple-linked user identity
+
+The native app obtains a fresh Apple authorization code for the same Apple sign-in account, then sends `DELETE /api/account` with its signed bearer session, `Content-Type: application/json`, and `{ "appleAuthorizationCode": "FRESH_CODE" }`. A code supplied with a bearer request is exchanged using the bundle ID and its secret. Cookie requests use the Services ID and its secret, with the registered callback URL. Do not reuse the code already consumed by a sign-in callback.
+
+A request may omit the code when the backend already holds a web refresh or access token. If none is stored, the endpoint returns `apple_authorization_required`. It revokes the code's resulting token and any stored web tokens; an exchange or revocation failure returns `apple_revocation_failed` without deleting local records. On `204`, discard the local session and cached journal. All other sessions for that identity are invalid too. A later sign-in starts a new empty journal with starter categories. Previously exported Google Drive spreadsheets remain in Drive.
+
+See [Apple's account-deletion guidance](https://developer.apple.com/documentation/technotes/tn3194-handling-account-deletions-and-revoking-tokens-for-sign-in-with-apple) and [token revocation endpoint](https://developer.apple.com/documentation/signinwithapplerestapi/revoke-tokens).
+
 ## Verify real configuration
 
 On both the local HTTPS origin and production: sign in with Apple and Share My Email, reload, confirm the existing journal is visible, sign out, sign in with Google, and confirm the same records. Try a different verified Apple account and Hide My Email; confirm each opens its own journal without exposing the first account's records. Cancel an Apple authorization and confirm the login page offers retry. Check Google Sheets authorization/export from an Apple session. If using iOS, test a real device and verify sign-out revokes its bearer session.
+
+Using a disposable test identity on a real device, delete with a fresh Apple code and verify `204`, old web and native sessions are refused, and a later sign-in has no financial movements. Repeat web deletion with a stored Apple token. Verify both client-secret subjects and renewal dates.
 
 Automated tests control Apple's HTTP responses and exercise real callback/state handling and database sessions. They do not validate your Apple Developer registration, real credentials, tunnel, or Vercel settings.

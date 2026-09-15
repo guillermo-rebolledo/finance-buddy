@@ -76,22 +76,8 @@ const appleTokens = Object.fromEntries(
     ]),
   ),
 );
-agent
-  .get("https://appleid.apple.com")
-  .intercept({ path: "/auth/token", method: "POST" })
-  .reply((options) => {
-    const params = new URLSearchParams(String(options.body));
-    const token = appleTokens[params.get("code")];
-    if (!token || params.get("client_id") !== "test-apple-service" ||
-        params.get("client_secret") !== "test-apple-secret" ||
-        params.get("redirect_uri") !== "http://127.0.0.1:3100/api/auth/callback/apple")
-      return { statusCode: 400, data: { error: "invalid_grant" } };
-    return { statusCode: 200, data: {
-      access_token: "controlled-apple-token", token_type: "Bearer",
-      expires_in: 3600, id_token: token,
-    } };
-  })
-  .persist();
+import { installAppleProvider } from "./apple-provider.mjs";
+await installAppleProvider(agent, appleTokens, privateKey);
 // One control file names how Google answers next: an expired grant, a refused
 // refresh, a revoked permission, exhausted quota, a provider failure, or a
 // request that never gets a reply. Tests write it; the app never reads it.
@@ -154,6 +140,15 @@ agent
     };
   })
   .persist();
+agent.get("https://oauth2.googleapis.com")
+  .intercept({ path: "/revoke", method: "POST" })
+  .reply((options) => {
+    appendFileSync(process.env.TEST_CLOCK_FILE + ".google-revocations",
+      JSON.stringify(Object.fromEntries(new URLSearchParams(String(options.body)))) + "\n");
+    if (control() === "revoke-failed") return { statusCode: 500, data: {} };
+    if (control() === "revoke-silent") throw new Error("socket hang up");
+    return { statusCode: 200, data: {} };
+  }).persist();
 // Google Sheets at the same external boundary: every spreadsheet the app asks
 // for is recorded whole, so tests compare what Google received with what the
 // app reports on screen.

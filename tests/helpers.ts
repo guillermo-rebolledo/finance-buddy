@@ -495,3 +495,28 @@ export async function nativeSignIn({
   });
   return { response, bearer: response.headers.get("set-auth-token") };
 }
+
+export async function nativeAppleSignIn(base = appOrigin, identity: "owner" | "stranger" = "owner") {
+  await advanceSignInClock();
+  const nonce = randomUUID();
+  const token = await appleIdToken({ nonce, identity });
+  const response = await nativeClient(null, base)("/api/auth/sign-in/social", {
+    method: "POST",
+    body: { provider: "apple", idToken: { token, nonce } },
+  });
+  expect(response.status).toBe(200);
+  return nativeClient(response.headers.get("set-auth-token"), base);
+}
+
+export async function appleAnswers(directive = "") {
+  await writeFile(process.env.TEST_CLOCK_FILE! + ".apple", directive);
+}
+export async function providerRequests(provider: "apple" | "google") {
+  const suffix = provider === "apple" ? ".apple-requests" : ".google-revocations";
+  const contents = await readFile(process.env.TEST_CLOCK_FILE! + suffix, "utf8").catch(() => "");
+  return contents.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+}
+export async function forgetProviderRequests() {
+  for (const suffix of [".apple-requests", ".google-revocations"])
+    await writeFile(process.env.TEST_CLOCK_FILE! + suffix, "");
+}

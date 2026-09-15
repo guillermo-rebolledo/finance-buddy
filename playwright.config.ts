@@ -41,5 +41,15 @@ export default defineConfig({
       },
       reuseExistingServer: false,
     },
+    {
+      command:
+        "node --import ./tests/google-provider.mjs node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3103",
+      url: "http://127.0.0.1:3103/login",
+      env: {
+        BETTER_AUTH_URL: "http://127.0.0.1:3103",
+        APPLE_IOS_CLIENT_SECRET: "",
+      },
+      reuseExistingServer: false,
+    },
   ],
 });

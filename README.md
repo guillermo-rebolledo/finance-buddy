@@ -29,6 +29,7 @@ Configure these five required variables plus the optional provider and iOS setti
 | `APPLE_CLIENT_ID`     | Optional. Apple web Services ID; set together with `APPLE_CLIENT_SECRET`. |
 | `APPLE_CLIENT_SECRET` | Optional. Generated Apple client-secret JWT; renew before its 180-day expiry. |
 | `APPLE_IOS_BUNDLE_ID` | Optional. Additional audience for native Apple ID tokens, when Apple is configured. |
+| `APPLE_IOS_CLIENT_SECRET` | Optional. Apple client-secret JWT whose subject is `APPLE_IOS_BUNDLE_ID`, required to exchange native Apple codes for account deletion. Ignored without the bundle ID; renew before its 180-day expiry. |
 | `MINIMUM_IOS_BUILD`    | Optional. The oldest iOS app build served, such as `12`; older builds are asked to update.                |
 
 For Apple Developer registration, the secret generator, HTTPS local testing, and production Vercel values, follow **[Sign in with Apple setup](docs/apple-sign-in.md)**. Apple is optional; configure both Apple credentials to enable its login button.
@@ -128,6 +129,8 @@ Every refusal from a private endpoint, and from the auth route itself, is JSON w
 | `not_found`              | 404    | The auth operation is not exposed.                                                               |
 | `invalid_period`         | 400    | The day, week, or month named by `kind` and `date` cannot be resolved.                           |
 | `invalid_field`          | 400    | The body was refused; `field` names the input at fault.                                          |
+| `apple_authorization_required` | 403 | An Apple sign-in account has no stored revocable token. Authorize Apple again and retry deletion with the fresh code; nothing was deleted. |
+| `apple_revocation_failed` | 503 | Apple code exchange or revocation failed, or the required client secret is missing. Nothing was deleted. |
 | `reconnect_required`     | 403    | Google Sheets export must be authorized again before exporting.                                  |
 | `export_unconfirmed`     | 409    | An earlier attempt of this export was never confirmed; check Google Drive instead of retrying.  |
 | `export_period_mismatch` | 409    | This export identifier already covers a different period.                                        |
@@ -140,7 +143,7 @@ The session reader keeps Better Auth's reply shape, answering `null` with 403 or
 
 ## Request integrity
 
-A private request that names an Origin must name the configured one, however it is authenticated. A write authenticated by the session cookie must also name that Origin, because a browser attaches cookies to other sites' requests too. A write authenticated by a bearer token needs no Origin: only the client holding the token attaches it, and a native client has no origin to send. Every write carries a JSON body. No CORS headers are sent, so no other site's page can read a reply.
+A private request that names an Origin must name the configured one, however it is authenticated. A write authenticated by the session cookie must also name that Origin, because a browser attaches cookies to other sites' requests too. A write authenticated by a bearer token needs no Origin: only the client holding the token attaches it, and a native client has no origin to send. `DELETE /api/account` may omit its body; every supplied write body must be JSON. No CORS headers are sent, so no other site's page can read a reply.
 
 ## App builds
 
@@ -163,10 +166,11 @@ For local development, a simulator reaching `http://localhost:3000` needs an App
 
 ## API contract
 
-Every private endpoint below proves a live owner session from the session cookie or a bearer token, refusing `unauthenticated`, `forbidden`, or `unavailable`; refuses an older or unreadable `X-Finance-Buddy-Build` with `upgrade_required` and a foreign Origin with `request_not_allowed`; and answers with `Cache-Control: private, no-store`. A write also needs `Content-Type: application/json`, and this app's Origin when it carries the cookie. Amounts are exact decimal strings in MXN, and dates are `YYYY-MM-DD` Mexico City calendar dates. `kind` is `day`, `week`, or `month`; omitting `kind` and `date` means the current week.
+Every private endpoint below proves a live owner session from the session cookie or a bearer token, refusing `unauthenticated`, `forbidden`, or `unavailable`; refuses an older or unreadable `X-Finance-Buddy-Build` with `upgrade_required` and a foreign Origin with `request_not_allowed`; and answers with `Cache-Control: private, no-store`. A write also needs `Content-Type: application/json` (except a bodyless `DELETE /api/account`), and this app's Origin when it carries the cookie. Amounts are exact decimal strings in MXN, and dates are `YYYY-MM-DD` Mexico City calendar dates. `kind` is `day`, `week`, or `month`; omitting `kind` and `date` means the current week.
 
 | Endpoint                                   | Input                                                                                                          | Success                                                                                                                                                      | Further refusal codes                                                                                        |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `DELETE /api/account` | Optional `{ appleAuthorizationCode: string }` | `204`, no body; the user identity and all owned records are permanently deleted | `apple_authorization_required`, `apple_revocation_failed`, `invalid_field`, `not_confirmed` |
 | `GET /api/private`                         | none                                                                                                           | `{ userId, database }`. A session check only; it does not examine Origin.                                                                                   | none                                                                                                         |
 | `GET /api/journal?kind=&date=`             | optional period                                                                                                | `{ kind, date, start, end, today, currency, income, expenses, netChange, categories, entries, breakdown, budget }`                                           | `invalid_period`                                                                                             |
 | `POST /api/journal`                        | `{ id, kind, amount, date, categoryId, note }`                                                                 | `{ saved: true }`, plus `budget` for an expense or refund whose date has a budget                                                                           | `invalid_field`, `not_confirmed`                                                                             |
@@ -196,6 +200,16 @@ The auth route exposes only these operations; any other path under `/api/auth` a
 | `GET /api/auth/get-session`       | both    | the cookie or a bearer token                                             | `{ session, user }`, or `null` without a session                          | `null` with 403 for an identity that is not the owner, or 503                                                                                             |
 | `POST /api/auth/sign-out`         | both    | `{}`; with a bearer token, no Origin                                     | `{ success: true }`, that session deleted                                 | `request_not_allowed`                                                                                                                                     |
 | `POST /api/auth/revoke-sessions`  | both    | `{}`; with a bearer token, no Origin                                     | `{ status: true }`, every session of the owner deleted                    | `request_not_allowed`                                                                                                                                     |
+
+## Account deletion
+
+`DELETE /api/account` permanently deletes the signed-in user identity with no grace period. It accepts a live signed bearer token or cookie; cookie writes require this app's Origin, and the minimum iOS build gate applies. The body is optional. If sent, it must be a JSON object; `appleAuthorizationCode`, when present, must be a nonempty string.
+
+An Apple-linked identity must have a stored refresh/access token or supply a fresh Apple authorization code. **Bearer requests supply codes issued for `APPLE_IOS_BUNDLE_ID`; cookie requests supply codes issued for the web Services ID.** Codes are opaque, so the endpoint uses that request convention and never retries with another audience. Native exchanges require `APPLE_IOS_CLIENT_SECRET`; web exchanges use `APPLE_CLIENT_SECRET` and the registered Apple callback URL. The code must belong to the linked Apple sign-in account. The endpoint revokes the exchanged token and all stored Apple tokens before deletion. Any Apple failure refuses the operation and retains all local records. Some grants may already have been revoked, so a retry may need a fresh authorization code.
+
+Stored Google tokens, including the separate Sheets `drive.file` grant, are then revoked on a best-effort basis. Failures are logged without credentials and do not prevent deletion. Finally, one database transaction deletes the user and cascades to all sessions, sign-in accounts, category seeds, categories, financial movements, budgets (including history), and spreadsheet export records. Existing export snapshots in Google Drive remain untouched. Every old bearer and cookie session stops working immediately; signing in again creates a new user identity with an empty journal and starter categories. Other users' data and sessions are unchanged.
+
+This endpoint supplies the backend contract; deletion controls in web Settings and the iOS client are separate work. See [ADR 0011](docs/adr/0011-delete-accounts-in-app-for-app-store-distribution.md).
 
 ## Budgets
 
