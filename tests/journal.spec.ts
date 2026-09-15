@@ -83,7 +83,7 @@ test("phone and desktop save optional fields, preserve invalid input, and recove
 }, testInfo) => {
   await overview(page);
   await expect(
-    page.getByText("Nothing here yet", { exact: true }),
+    page.getByRole("main").getByText("Nothing here yet", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Add entry", exact: true }).click();
   await expect(page.getByLabel("Movement date", { exact: true })).toHaveValue(
