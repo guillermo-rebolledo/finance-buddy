@@ -103,9 +103,9 @@ test("an entry is corrected through the form and both periods it touches agree",
   });
   // The creation rules apply unchanged, and a refused correction keeps the
   // values on screen without claiming success.
-  // The field keeps no more than cents.
+  // Digits fill the cents first.
   await page.getByLabel("Amount (MXN)").fill("12.345");
-  await expect(page.getByLabel("Amount (MXN)")).toHaveValue("12.34");
+  await expect(page.getByLabel("Amount (MXN)")).toHaveValue("123.45");
   await page.getByLabel("Amount (MXN)").fill("0");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(notification(page, "two decimal places")).toBeVisible();
@@ -421,7 +421,7 @@ test("a purchase and a refund in different months are each corrected accurately"
     page.getByRole("heading", { name: "August 2026", level: 1 }),
   ).toBeVisible();
   await entryAction(page, "Edit", "Expense of MXN 1,200.00 on 2026-08-15");
-  await page.getByLabel("Amount (MXN)").fill("1000");
+  await page.getByLabel("Amount (MXN)").fill("1000.00");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(notification(page, "Entry updated.")).toBeVisible();
   expect((await report(page, august)).expenses).toBe("1000.00");
@@ -432,7 +432,7 @@ test("a purchase and a refund in different months are each corrected accurately"
     page.getByRole("heading", { name: "This month", level: 1 }),
   ).toBeVisible();
   await entryAction(page, "Edit", "Refund of MXN 200.00 on 2026-09-05");
-  await page.getByLabel("Amount (MXN)").fill("250");
+  await page.getByLabel("Amount (MXN)").fill("250.00");
   await page.getByLabel("Movement date", { exact: true }).fill("2026-08-20");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(notification(page, "outside the period you are viewing")).toBeVisible();

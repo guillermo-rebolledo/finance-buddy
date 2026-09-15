@@ -388,21 +388,25 @@ export function money(amount: string) {
   const [whole, fraction] = (negative ? amount.slice(1) : amount).split(".");
   return `${negative ? "-" : ""}MXN ${groupThousands(whole)}.${fraction}`;
 }
-// An amount as it's being typed: grouping commas, one decimal point, and no
-// more digits than amountPattern allows. Anything else typed or pasted is
-// dropped, so the field can only hold an amount or part of one.
+// An amount as it's being typed, cents first: each digit enters on the right
+// and shifts the others left, so typing 1, 2, 3 reads 0.01, 0.12, 1.23. Only
+// digits count, up to the most amountPattern allows, and thousands are grouped
+// with commas.
 export function formatAmountInput(text: string) {
-  const [whole, ...fractions] = text.replace(/[^\d.]/g, "").split(".");
-  const digits = whole.replace(/^0+(?=\d)/, "").slice(0, 12);
-  if (fractions.length === 0) return groupThousands(digits);
-  return `${groupThousands(digits || "0")}.${fractions.join("").slice(0, 2)}`;
+  const digits = text
+    .replace(/\D/g, "")
+    .replace(/^0+(?=\d)/, "")
+    .slice(0, 14);
+  if (digits === "") return "";
+  const cents = digits.padStart(3, "0");
+  return `${groupThousands(cents.slice(0, -2))}.${cents.slice(-2)}`;
 }
-// A typed amount completed to cents, once the owner has finished typing it.
-export function completeAmountInput(text: string) {
-  const formatted = formatAmountInput(text);
-  if (formatted === "") return "";
-  const [whole, fraction = ""] = formatted.split(".");
-  return `${whole}.${fraction.padEnd(2, "0")}`;
+// Pasted text is read as pesos rather than as digits typed one by one, so a
+// copied "1,234.5" stays MXN 1,234.50.
+export function pastedAmountInput(text: string) {
+  const [whole, fraction = ""] = text.replace(/[^\d.]/g, "").split(".");
+  if (!/\d/.test(whole + fraction)) return "";
+  return formatAmountInput(`${whole}${fraction.slice(0, 2).padEnd(2, "0")}`);
 }
 // The amount a formatted field holds, in the Amount format the API accepts.
 export function plainAmount(text: string) {

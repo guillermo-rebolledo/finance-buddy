@@ -1,17 +1,17 @@
 "use client";
 import * as React from "react";
-import { completeAmountInput, formatAmountInput } from "@/lib/financial";
+import { formatAmountInput, pastedAmountInput } from "@/lib/financial";
 import { Input } from "@/components/ui/input";
 
-// The caret is tracked by the digits and decimal point before it, so it stays
-// put while the mask adds or moves grouping commas around it.
-function significantBefore(text: string, position: number) {
-  return text.slice(0, position).replace(/[^\d.]/g, "").length;
+// New digits push the ones before them left, so the caret is tracked by how
+// many digits follow it, which typing elsewhere never changes.
+function digitsAfter(text: string, position: number) {
+  return text.slice(position).replace(/\D/g, "").length;
 }
-function positionAfter(text: string, count: number) {
-  let position = 0;
-  for (let seen = 0; position < text.length && seen < count; position++)
-    if (text[position] !== ",") seen++;
+function positionBefore(text: string, count: number) {
+  let position = text.length;
+  for (let seen = 0; position > 0 && seen < count; position--)
+    if (/\d/.test(text[position - 1])) seen++;
   return position;
 }
 
@@ -26,21 +26,26 @@ type AmountInputProps = Omit<
   onValueChange?: (value: string) => void;
 };
 
-// A money field that groups thousands with commas as the owner types, keeps at
-// most two decimal places, and completes the cents when it loses focus. It
-// works both controlled (value) and uncontrolled (defaultValue, FormData).
+// A money field filled cents first, as on a card terminal, with thousands
+// grouped by commas. It works both controlled (value) and uncontrolled
+// (defaultValue, FormData).
 function AmountInput({
   value,
   defaultValue,
   onValueChange,
-  onBlur,
   onKeyDown,
+  onPaste,
   ...props
 }: AmountInputProps) {
+  function show(input: HTMLInputElement, next: string, caret: number) {
+    input.value = next;
+    input.setSelectionRange(caret, caret);
+    onValueChange?.(next);
+  }
   return (
     <Input
       {...props}
-      inputMode="decimal"
+      inputMode="numeric"
       autoComplete="off"
       value={value === undefined ? undefined : formatAmountInput(value)}
       defaultValue={
@@ -51,32 +56,36 @@ function AmountInput({
         const input = event.currentTarget;
         const { selectionStart: start, selectionEnd: end } = input;
         if (start === null || start !== end) return;
-        // Deleting beside a comma removes the digit past it; removing only the
-        // comma would be undone by the mask.
-        if (event.key === "Backspace" && input.value[start - 1] === ",")
+        // Deleting beside a comma or the decimal point removes the digit past
+        // it; removing only the separator would be undone by the mask.
+        if (event.key === "Backspace" && /[,.]/.test(input.value[start - 1]))
           input.setSelectionRange(start - 1, start - 1);
-        if (event.key === "Delete" && input.value[start] === ",")
+        if (event.key === "Delete" && /[,.]/.test(input.value[start] ?? ""))
           input.setSelectionRange(start + 1, start + 1);
       }}
       onChange={(event) => {
         const input = event.currentTarget;
         const typed = input.value;
-        const next = formatAmountInput(typed);
-        const caret = positionAfter(
+        const formatted = formatAmountInput(typed);
+        // Deleting down to zero empties the field; only a typed 0 reads 0.00.
+        const deleting = (
+          event.nativeEvent as InputEvent
+        ).inputType?.startsWith("delete");
+        const next = deleting && /^[0.]*$/.test(formatted) ? "" : formatted;
+        show(
+          input,
           next,
-          significantBefore(typed, input.selectionStart ?? typed.length),
+          positionBefore(
+            next,
+            digitsAfter(typed, input.selectionStart ?? typed.length),
+          ),
         );
-        input.value = next;
-        input.setSelectionRange(caret, caret);
-        onValueChange?.(next);
       }}
-      onBlur={(event) => {
-        onBlur?.(event);
-        const input = event.currentTarget;
-        const next = completeAmountInput(input.value);
-        if (next === input.value) return;
-        input.value = next;
-        onValueChange?.(next);
+      onPaste={(event) => {
+        onPaste?.(event);
+        event.preventDefault();
+        const next = pastedAmountInput(event.clipboardData.getData("text"));
+        if (next) show(event.currentTarget, next, next.length);
       }}
     />
   );
