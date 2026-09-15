@@ -380,10 +380,33 @@ export function decimal(value: bigint) {
   const absolute = value < 0n ? -value : value;
   return `${sign}${absolute / 100n}.${String(absolute % 100n).padStart(2, "0")}`;
 }
+function groupThousands(whole: string) {
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
 export function money(amount: string) {
   const negative = amount.startsWith("-");
   const [whole, fraction] = (negative ? amount.slice(1) : amount).split(".");
-  return `${negative ? "-" : ""}MXN ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction}`;
+  return `${negative ? "-" : ""}MXN ${groupThousands(whole)}.${fraction}`;
+}
+// An amount as it's being typed: grouping commas, one decimal point, and no
+// more digits than amountPattern allows. Anything else typed or pasted is
+// dropped, so the field can only hold an amount or part of one.
+export function formatAmountInput(text: string) {
+  const [whole, ...fractions] = text.replace(/[^\d.]/g, "").split(".");
+  const digits = whole.replace(/^0+(?=\d)/, "").slice(0, 12);
+  if (fractions.length === 0) return groupThousands(digits);
+  return `${groupThousands(digits || "0")}.${fractions.join("").slice(0, 2)}`;
+}
+// A typed amount completed to cents, once the owner has finished typing it.
+export function completeAmountInput(text: string) {
+  const formatted = formatAmountInput(text);
+  if (formatted === "") return "";
+  const [whole, fraction = ""] = formatted.split(".");
+  return `${whole}.${fraction.padEnd(2, "0")}`;
+}
+// The amount a formatted field holds, in the Amount format the API accepts.
+export function plainAmount(text: string) {
+  return text.replaceAll(",", "").trim();
 }
 // Axis ticks carry magnitude only; the tooltip and the table view beside every
 // chart carry the exact figure.

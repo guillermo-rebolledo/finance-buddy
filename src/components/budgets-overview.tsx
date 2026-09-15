@@ -11,6 +11,7 @@ import {
   periodHasEnded,
   periodKindDetails,
   periodKinds,
+  plainAmount,
   spanLabel,
   validateBudget,
   type BudgetList,
@@ -20,6 +21,7 @@ import {
   type Summary,
 } from "@/lib/financial";
 import { cn } from "@/lib/utils";
+import { AmountInput } from "@/components/amount-input";
 import { PageHeader } from "@/components/page-header";
 import { BudgetFigures } from "@/components/budget-figures";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -723,7 +725,7 @@ function BudgetForm({
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    const input = { amount: amount.trim(), oneOff };
+    const input = { amount: plainAmount(amount), oneOff };
     const refused = validateBudget(input);
     if (refused) return refuse(refused.message);
     setSaving(true);
@@ -843,16 +845,15 @@ function BudgetForm({
                 )}
                 <Field data-invalid={Boolean(invalid)}>
                   <FieldLabel htmlFor="budget-amount">Amount (MXN)</FieldLabel>
-                  <Input
+                  <AmountInput
                     id="budget-amount"
-                    inputMode="decimal"
                     placeholder="0.00"
                     value={amount}
                     aria-invalid={Boolean(invalid)}
                     aria-describedby={
                       invalid ? "budget-amount-error" : undefined
                     }
-                    onChange={(event) => setAmount(event.target.value)}
+                    onValueChange={setAmount}
                   />
                   {invalid ? (
                     <FieldError id="budget-amount-error">{invalid}</FieldError>

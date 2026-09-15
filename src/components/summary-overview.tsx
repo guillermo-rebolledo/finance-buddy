@@ -10,12 +10,14 @@ import {
   entryKindDetails,
   entryTitle,
   money,
+  plainAmount,
   signedAmount,
   validateEntry,
   type Entry,
   type EntryInput,
   type Summary,
 } from "@/lib/financial";
+import { AmountInput } from "@/components/amount-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
@@ -165,7 +167,7 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
     const entry = pending.current ?? {
       id: editing?.id ?? crypto.randomUUID(),
       kind,
-      amount: String(data.get("amount") ?? ""),
+      amount: plainAmount(String(data.get("amount") ?? "")),
       date: String(data.get("date") ?? ""),
       categoryId:
         [uncategorized, ""].includes(String(data.get("categoryId") ?? ""))
@@ -357,11 +359,10 @@ export function SummaryOverview({ initial }: { initial: Summary | null }) {
                   </Field>
                   <Field data-invalid={invalidField === "amount"}>
                     <FieldLabel htmlFor="amount">Amount (MXN)</FieldLabel>
-                    <Input
+                    <AmountInput
                       id="amount"
                       name="amount"
                       {...fieldProps("amount")}
-                      inputMode="decimal"
                       placeholder="0.00"
                       defaultValue={editing?.amount}
                       required

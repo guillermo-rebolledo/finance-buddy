@@ -91,7 +91,7 @@ test("an entry is corrected through the form and both periods it touches agree",
   ).toBeVisible();
   // The form opens on the recorded values, not on empty fields.
   await expect(page.getByLabel("Type", { exact: true })).toHaveText("Expense");
-  await expect(page.getByLabel("Amount (MXN)")).toHaveValue("1200.00");
+  await expect(page.getByLabel("Amount (MXN)")).toHaveValue("1,200.00");
   await expect(page.getByLabel("Movement date", { exact: true })).toHaveValue(
     "2026-09-01",
   );
@@ -103,7 +103,10 @@ test("an entry is corrected through the form and both periods it touches agree",
   });
   // The creation rules apply unchanged, and a refused correction keeps the
   // values on screen without claiming success.
+  // The field keeps no more than cents.
   await page.getByLabel("Amount (MXN)").fill("12.345");
+  await expect(page.getByLabel("Amount (MXN)")).toHaveValue("12.34");
+  await page.getByLabel("Amount (MXN)").fill("0");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(notification(page, "two decimal places")).toBeVisible();
   await expect(page.getByLabel("Note (optional)")).toHaveValue("Weekly shop");
