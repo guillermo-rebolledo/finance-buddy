@@ -58,7 +58,7 @@ Verified September 13, 2026, on branch `feat/ios-native-backend` at commit `1571
 ## Before the pass
 
 1. Create an **iOS** OAuth client in the same Google Cloud project as the web client.
-2. Set `GOOGLE_IOS_CLIENT_ID`, and `MINIMUM_IOS_BUILD` if an oldest build is wanted, for the target Vercel environment, then redeploy.
+2. Set `GOOGLE_IOS_CLIENT_ID`, and `MINIMUM_IOS_BUILD` if an oldest build is wanted, for the target Vercel environment, then redeploy. Production `MINIMUM_IOS_BUILD` must never be higher than a build that is in App Review or available on TestFlight, or the reviewer will see the update-required screen.
 3. Install an app build pointing at that deployment's stable origin.
 
 ## iPhone checklist
@@ -73,5 +73,6 @@ Verified September 13, 2026, on branch `feat/ios-native-backend` at commit `1571
 - [ ] Sign out in the app; the web stays signed in.
 - [ ] Sign in on the app again, then confirm **Settings → Sessions → Sign out everywhere** on the web; the app's next request is refused and it returns to sign-in, and the browser is back at `/login`.
 - [ ] If `MINIMUM_IOS_BUILD` is set above the installed build, the app is asked to update and nothing it sends is written.
+- [ ] Before submitting, confirm production `MINIMUM_IOS_BUILD` is no higher than the exact build in App Review or available on TestFlight.
 
 Record the deployment URL, the app build, the iOS version, the date, and each result here.

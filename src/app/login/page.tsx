@@ -12,6 +12,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ModeToggle } from "@/components/mode-toggle";
 import { BookOpen, LockKeyhole } from "lucide-react";
+import Link from "next/link";
 export const dynamic = "force-dynamic";
 export default async function Login({
   searchParams,
@@ -80,9 +81,15 @@ export default async function Login({
             </div>
           </CardContent>
           <CardFooter>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Only you can see the journal tied to this account.
-            </p>
+            <div className="flex flex-col gap-2 text-xs leading-relaxed text-muted-foreground">
+              <p>Only you can see the journal tied to this account.</p>
+              <Link
+                href="/privacy"
+                className="w-fit text-primary underline underline-offset-4"
+              >
+                Privacy Policy
+              </Link>
+            </div>
           </CardFooter>
         </Card>
       </div>
