@@ -380,10 +380,37 @@ export function decimal(value: bigint) {
   const absolute = value < 0n ? -value : value;
   return `${sign}${absolute / 100n}.${String(absolute % 100n).padStart(2, "0")}`;
 }
+function groupThousands(whole: string) {
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
 export function money(amount: string) {
   const negative = amount.startsWith("-");
   const [whole, fraction] = (negative ? amount.slice(1) : amount).split(".");
-  return `${negative ? "-" : ""}MXN ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction}`;
+  return `${negative ? "-" : ""}MXN ${groupThousands(whole)}.${fraction}`;
+}
+// An amount as it's being typed, cents first: each digit enters on the right
+// and shifts the others left, so typing 1, 2, 3 reads 0.01, 0.12, 1.23. Only
+// digits count, up to the most amountPattern allows, and thousands are grouped
+// with commas.
+export function formatAmountInput(text: string) {
+  const digits = text
+    .replace(/\D/g, "")
+    .replace(/^0+(?=\d)/, "")
+    .slice(0, 14);
+  if (digits === "") return "";
+  const cents = digits.padStart(3, "0");
+  return `${groupThousands(cents.slice(0, -2))}.${cents.slice(-2)}`;
+}
+// Pasted text is read as pesos rather than as digits typed one by one, so a
+// copied "1,234.5" stays MXN 1,234.50.
+export function pastedAmountInput(text: string) {
+  const [whole, fraction = ""] = text.replace(/[^\d.]/g, "").split(".");
+  if (!/\d/.test(whole + fraction)) return "";
+  return formatAmountInput(`${whole}${fraction.slice(0, 2).padEnd(2, "0")}`);
+}
+// The amount a formatted field holds, in the Amount format the API accepts.
+export function plainAmount(text: string) {
+  return text.replaceAll(",", "").trim();
 }
 // Axis ticks carry magnitude only; the tooltip and the table view beside every
 // chart carry the exact figure.

@@ -241,14 +241,23 @@ test("deletion leaves another user's financial movements, categories, budgets, a
   const app = nativeClient((await nativeSignIn()).bearer);
   const otherSignIn = await nativeSignIn({ identity: "stranger" });
   const other = nativeClient(otherSignIn.bearer);
+  // Seeding at noon in Mexico City two days ago and reading from the day after
+  // ends the seeded day budget without moving the clock past the real date,
+  // which later sign-ins would carry into the session-expiry specs.
+  const day = 24 * 60 * 60 * 1000;
+  let seeded = Date.parse(
+    `${new Date(Date.now() - 2 * day).toISOString().slice(0, 10)}T18:00:00Z`,
+  );
+  // Only the day ends: not a Sunday, which ends the week, nor a month's last day.
+  while (
+    new Date(seeded).getUTCDay() === 0 ||
+    new Date(seeded + day).getUTCDate() === 1
+  )
+    seeded -= day;
+  await moveClockTo(new Date(seeded).toISOString());
   await seedJournal(app);
   await seedJournal(other);
-  const today = (await (await app("/api/journal")).json()).today;
-  await moveClockTo(
-    new Date(
-      Date.parse(`${today}T18:00:00Z`) + 24 * 60 * 60 * 1000,
-    ).toISOString(),
-  );
+  await moveClockTo(new Date(seeded + day).toISOString());
   const before = await journalState(other);
   expect(before[3].past).toHaveLength(1);
   expect(

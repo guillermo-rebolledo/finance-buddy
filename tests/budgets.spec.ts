@@ -205,7 +205,7 @@ test("the confirmation after recording an expense says how much of its budget is
     if (date) await page.getByLabel("Movement date").fill(date);
     await page.getByRole("button", { name: "Save entry", exact: true }).click();
   };
-  await add("300");
+  await add("300.00");
   await expect(
     notification(page, "Entry saved. MXN 1,700.00 left this week."),
   ).toBeVisible();
@@ -215,13 +215,13 @@ test("the confirmation after recording an expense says how much of its budget is
   });
   // Neither last week nor September has a budget, so the confirmation carries
   // no budget line.
-  await add("20", "2026-09-01");
+  await add("20.00", "2026-09-01");
   const outside = notification(page, "outside the period you are viewing");
   await expect(outside).toBeVisible();
   await expect(outside).not.toContainText("left");
   // Today's MXN 300 and MXN 150 exceed a MXN 400 day budget.
   await setBudget(page, "?kind=day&date=2026-09-09", "400");
-  await add("150");
+  await add("150.00");
   await expect(
     notification(page, "Entry saved. Over by MXN 50.00 today."),
   ).toBeVisible();
@@ -826,7 +826,7 @@ test("Budgets sits between Dashboard and Categories in the navigation and explai
   await expect(
     form.getByText("Week of 14–20 Sep", { exact: true }),
   ).toBeVisible();
-  await form.getByLabel("Amount (MXN)", { exact: true }).fill("500");
+  await form.getByLabel("Amount (MXN)", { exact: true }).fill("500.00");
   await form.getByRole("button", { name: "Save budget" }).click();
   const now = page.getByRole("region", { name: "Now", exact: true });
   await expect(now).toBeVisible();
@@ -855,11 +855,43 @@ test("a weekly budget set from the form appears in Now with what is left per day
   await expect(form.getByText("Week of 7–13 Sep", { exact: true })).toBeVisible();
   await expect(amount).toHaveValue("");
 
-  await amount.fill("12.345");
+  // The amount fills cents first, each digit shifting the others left, with
+  // thousands grouped as it grows.
+  await amount.pressSequentially("123");
+  await expect(amount).toHaveValue("1.23");
+  await amount.pressSequentially("45678");
+  await expect(amount).toHaveValue("123,456.78");
+  // Backspace just after a comma removes the digit before it, and the caret
+  // keeps its place among the digits after it.
+  for (let step = 0; step < 6; step++) await amount.press("ArrowLeft");
+  await amount.press("Backspace");
+  await expect(amount).toHaveValue("12,456.78");
+  await amount.pressSequentially("9");
+  await expect(amount).toHaveValue("129,456.78");
+  // Pasted text is read as pesos, not as digits typed one by one.
+  await amount.fill("");
+  await amount.evaluate((input) => {
+    const data = new DataTransfer();
+    data.setData("text", "MXN 1,234.5");
+    input.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await expect(amount).toHaveValue("1,234.50");
+  // Deleting down to zero empties the field.
+  await amount.fill("");
+  await amount.pressSequentially("5");
+  await expect(amount).toHaveValue("0.05");
+  await amount.press("Backspace");
+  await expect(amount).toHaveValue("");
   await save.click();
   await expect(amount).toHaveAttribute("aria-invalid", "true");
   await expect(form.getByText(/up to two decimal places/)).toBeVisible();
-  await amount.fill("2000");
+  await amount.fill("2000.00");
   await save.click();
   await expect(
     notification(page, "Budget of MXN 2,000.00 saved for every week from 7 Sep."),
@@ -899,12 +931,12 @@ test("a weekly budget set from the form appears in Now with what is left per day
   await expect(amount).toHaveValue("");
   await choose(page, "Period", "Week");
   await expect(form.getByText("Week of 7–13 Sep", { exact: true })).toBeVisible();
-  await expect(amount).toHaveValue("2000.00");
+  await expect(amount).toHaveValue("2,000.00");
   await date.fill("2026-09-16");
   await expect(
     form.getByText("Week of 14–20 Sep", { exact: true }),
   ).toBeVisible();
-  await expect(amount).toHaveValue("2000.00");
+  await expect(amount).toHaveValue("2,000.00");
   await expect(save).toBeEnabled();
   // A period that has ended keeps the budget it had.
   await date.fill("2026-09-01");
@@ -1241,8 +1273,8 @@ test("the Repeating section changes a repeating budget from its row and stops it
   const form = page.getByRole("region", { name: "Set budget", exact: true });
   await expect(form.getByText("Week of 7–13 Sep", { exact: true })).toBeVisible();
   const amount = form.getByLabel("Amount (MXN)", { exact: true });
-  await expect(amount).toHaveValue("2000.00");
-  await amount.fill("2200");
+  await expect(amount).toHaveValue("2,000.00");
+  await amount.fill("2200.00");
   await form.getByRole("button", { name: "Save budget" }).click();
   await expect(
     notification(page, "Budget of MXN 2,200.00 saved for every week from 7 Sep."),
@@ -1581,9 +1613,9 @@ test("a one-off budget set from the form is listed under Upcoming one-offs, and 
   await expect(oneOff).not.toBeChecked();
   await form.getByLabel("Date", { exact: true }).fill("2026-09-16");
   await expect(form.getByText("Week of 14–20 Sep", { exact: true })).toBeVisible();
-  await expect(amount).toHaveValue("2000.00");
+  await expect(amount).toHaveValue("2,000.00");
   await oneOff.click();
-  await amount.fill("5000");
+  await amount.fill("5000.00");
   await expect(form).toContainText("Use this budget for the selected period only.");
   await page.screenshot({
     path: testInfo.outputPath("budgets-form-one-off.png"),
@@ -1613,7 +1645,7 @@ test("a one-off budget set from the form is listed under Upcoming one-offs, and 
   await planned.getByRole("button", { name: "Change", exact: true }).click();
   await expect(form.getByText("Week of 14–20 Sep", { exact: true })).toBeVisible();
   await expect(oneOff).toBeChecked();
-  await expect(amount).toHaveValue("5000.00");
+  await expect(amount).toHaveValue("5,000.00");
   await form.getByRole("button", { name: "Cancel" }).click();
   await planned.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(
