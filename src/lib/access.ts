@@ -15,6 +15,8 @@ export const refusalStatus = {
   invalid_period: 400,
   invalid_field: 400,
   reconnect_required: 403,
+  apple_authorization_required: 403,
+  apple_revocation_failed: 503,
   export_unconfirmed: 409,
   export_period_mismatch: 409,
   period_ended: 409,
@@ -50,8 +52,13 @@ export function unsupportedBuild(request: Request) {
 // this app's, however the request is authenticated. A write carrying the
 // session cookie must name that Origin, since a browser attaches cookies to
 // other sites' requests too; a bearer token is only ever attached by the client
-// holding it, so a native write needs none. Every write carries JSON.
-export async function authorizeOwner(request: Request, write: boolean) {
+// holding it, so a native write needs none. Writes require JSON by default;
+// an endpoint with an optional body checks its media type when a body is sent.
+export async function authorizeOwner(
+  request: Request,
+  write: boolean,
+  { optionalBody = false } = {},
+) {
   const outdated = unsupportedBuild(request);
   if (outdated) return { denied: outdated };
   const access = await getAccess(request.headers);
@@ -62,10 +69,11 @@ export async function authorizeOwner(request: Request, write: boolean) {
     (origin !== null && origin !== getConfig()?.origin) ||
     (write &&
       ((origin === null && access.proof === "cookie") ||
-        !request.headers.get("content-type")?.startsWith("application/json")))
+        (!optionalBody &&
+          !request.headers.get("content-type")?.startsWith("application/json"))))
   )
     return { denied: jsonError("request_not_allowed", "Finance Buddy blocked this request.") };
-  return { owner: access.userId };
+  return { owner: access.userId, proof: access.proof };
 }
 // The report and its export resolve the requested period the same way, and
 // refuse an unresolvable one in the same words, so a file can only ever cover a

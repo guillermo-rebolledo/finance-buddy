@@ -25,6 +25,7 @@ export function getConfig() {
     APPLE_CLIENT_ID,
     APPLE_CLIENT_SECRET,
     APPLE_IOS_BUNDLE_ID,
+    APPLE_IOS_CLIENT_SECRET,
     MINIMUM_IOS_BUILD,
   } = process.env;
   if (
@@ -78,6 +79,9 @@ export function getConfig() {
                   : []),
               ],
               clientSecret: APPLE_CLIENT_SECRET.trim(),
+              iosClientSecret: APPLE_IOS_BUNDLE_ID?.trim()
+                ? APPLE_IOS_CLIENT_SECRET?.trim() || undefined
+                : undefined,
             }
           : undefined,
     };
