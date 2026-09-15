@@ -18,9 +18,12 @@ export default function Privacy() {
         <h2>What Finance Buddy collects</h2>
         <p>
           When you sign in, Finance Buddy receives your name, email address,
-          and user ID from Google or Apple. It stores the financial movements,
-          categories, budgets, and export snapshot records you create, along
-          with session records that keep you signed in securely.
+          and user ID from Google or Apple, and a profile picture reference
+          when the provider supplies one. It stores the financial movements,
+          notes, category names, budgets, and export snapshot records you create.
+          Session records include an IP address and browser or device information
+          when available. Sign-in tokens and connected-provider grants are stored
+          to keep you signed in and provide the features you authorize.
         </p>
       </section>
 
@@ -47,24 +50,59 @@ export default function Privacy() {
       </section>
 
       <section>
+        <h2>Google Sign-In on iPhone</h2>
+        <p>
+          The iPhone app includes Google&apos;s Sign-In SDK. Google may process
+          account information and use your IP address to estimate a general
+          location for fraud prevention. Its SDK privacy disclosures also cover
+          name, email address, phone number, account and device identifiers,
+          usage information, and other data for sign-in functionality and
+          analytics. These are Google&apos;s SDK disclosures; Finance Buddy does
+          not request your phone number or access to your device&apos;s location.
+        </p>
+        <p>
+          See <a href="https://developers.google.com/identity/sign-in/ios/app-privacy">Google&apos;s sign-in data disclosure</a>{" "}
+          and <a href="https://policies.google.com/privacy">Google&apos;s Privacy Policy</a>{" "}
+          for its processing and retention practices.
+        </p>
+      </section>
+
+      <section>
+        <h2>Service operation</h2>
+        <p>
+          Our hosting and database providers process requests and maintain
+          operational logs and backups. Request details, such as IP addresses,
+          browser or device information, request times, and errors, help secure
+          the service and diagnose failures. This processing is separate from
+          the journal entries you choose to record.
+        </p>
+      </section>
+
+      <section>
         <h2>What Finance Buddy does not do</h2>
         <p>
-          Finance Buddy does not track you, show advertising, use analytics,
-          or sell your data.
+          Finance Buddy does not show advertising, sell your data, or use it
+          to track you across other companies&apos; apps and websites for
+          advertising. We do not run our own product analytics. Third-party
+          sign-in processing is described above.
         </p>
       </section>
 
       <section>
         <h2>Retention and deletion</h2>
         <p>
-          Your data is kept until you delete your account. You can delete it
+          Your journal is kept until you delete your account. You can delete it
           from Settings on the website or iPhone. Deletion removes your
-          journal and sessions and revokes provider grants held by Finance
-          Buddy.
+          journal and sessions from the active database. Apple-linked deletion
+          requires successful Apple grant revocation; Finance Buddy also requests
+          revocation of stored Google grants. Operational logs and backup copies
+          are subject to the hosting and database providers&apos; retention settings.
         </p>
         <p>
-          Export snapshots already saved as spreadsheets in your Google Drive
-          stay with you and are not deleted from your Drive.
+          Deleting Finance Buddy does not delete your Google or Apple account
+          or information retained by those providers under their own policies.
+          Exported spreadsheets in your Google Drive and PDFs you saved stay
+          with you.
         </p>
       </section>
 

@@ -3,6 +3,7 @@ import {
   goToSection,
   nativeClient,
   nativeSignIn,
+  moveClockTo,
   openNavigation,
   signIn,
 } from "./helpers";
@@ -170,10 +171,12 @@ test("expired sessions stop working for both the page and protected requests", a
   const previousTime = await readFile(process.env.TEST_CLOCK_FILE!, "utf8");
   await signIn(page);
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  const activeSession = await (await context.request.get("/api/auth/get-session")).json();
   try {
-    await writeFile(
-      process.env.TEST_CLOCK_FILE!,
-      String(8 * 24 * 60 * 60 * 1000),
+    // Earlier tests advance the sign-in clock. Expire this actual session,
+    // rather than assuming it was created at the machine's current time.
+    await moveClockTo(
+      new Date(Date.parse(activeSession.session.createdAt) + 8 * 24 * 60 * 60 * 1000).toISOString(),
     );
     expect((await context.request.get("/api/private")).status()).toBe(401);
     await page.reload();

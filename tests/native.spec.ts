@@ -426,9 +426,13 @@ test("signing out in the app ends that session alone, and a bearer session expir
   ])
     await expectRefusal(await other(path, { method: "POST", body: {} }), "not_found", 404);
   expect((await other("/api/private")).status).toBe(200);
-  // Seven days after it began, a bearer session no longer works.
+  const activeSession = await (await other("/api/auth/get-session")).json();
+  // Advance eight days from this session's creation. Other tests may already
+  // have moved sign-in time beyond the machine's clock.
   try {
-    await moveClockTo(new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString());
+    await moveClockTo(
+      new Date(Date.parse(activeSession.session.createdAt) + 8 * 24 * 60 * 60 * 1000).toISOString(),
+    );
     await expectRefusal(await other("/api/private"), "unauthenticated", 401);
   } finally {
     await resetClock();
