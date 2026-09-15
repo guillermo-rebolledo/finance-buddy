@@ -1,4 +1,5 @@
 import { getConfig } from "@/lib/config";
+import { AccountDeletedNotice } from "@/components/account-deleted-notice";
 import { AuthButton } from "@/components/auth-button";
 import {
   Card,
@@ -17,11 +18,11 @@ export const dynamic = "force-dynamic";
 export default async function Login({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; account?: string }>;
 }) {
   const config = getConfig();
   const configured = !!config;
-  const { error } = await searchParams;
+  const { error, account } = await searchParams;
   return (
     <main className="relative mx-auto flex min-h-svh max-w-5xl flex-col justify-center gap-12 px-6 py-12 lg:flex-row lg:items-center lg:gap-20">
       <section className="flex flex-1 flex-col gap-6">
@@ -56,6 +57,7 @@ export default async function Login({
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-5">
+              {account === "deleted" && <AccountDeletedNotice />}
               {!configured ? (
                 <Alert>
                   <AlertTitle>Sign-in isn&apos;t ready yet</AlertTitle>

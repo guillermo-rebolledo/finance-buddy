@@ -128,3 +128,9 @@ On both the local HTTPS origin and production: sign in with Apple and Share My E
 Using a disposable test identity on a real device, delete with a fresh Apple code and verify `204`, old web and native sessions are refused, and a later sign-in has no financial movements. Repeat web deletion with a stored Apple token. Verify both client-secret subjects and renewal dates.
 
 Automated tests control Apple's HTTP responses and exercise real callback/state handling and database sessions. They do not validate your Apple Developer registration, real credentials, tunnel, or Vercel settings.
+
+### Deleting from web Settings
+
+Settings has a separate **Delete account** confirmation. If the endpoint needs a fresh Apple code, the dialog loads [Apple's JavaScript authorization](https://developer.apple.com/documentation/signinwithapple/configuring-your-webpage-for-sign-in-with-apple) and offers **Authorize Apple and delete**. It uses the existing Services ID and registered `/api/auth/callback/apple` return URL in popup mode. The code goes directly to `DELETE /api/account`, so the sign-in callback does not consume it first or replace the current session. The returned state must match the authorization request.
+
+The popup opens from the person's click after the SDK has loaded. Cancellation, blocked popups, SDK loading failures, and API refusals leave Settings available for another attempt. Verify this with a disposable Apple-linked identity on the registered HTTPS origin, including one first created by native Apple sign-in with no stored web token. Automated browser tests control the Apple SDK response and token/revocation endpoints; real Apple credentials and registration still need that deployment check.
